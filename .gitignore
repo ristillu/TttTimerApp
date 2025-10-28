@@ -1,0 +1,38 @@
+################################
+# TTT Timer Project .gitignore
+################################
+
+# --- 1. Dependencies and Builds (NODE/REACT) ---
+/node_modules
+/ClientApp/build
+# Logs and other tooling files
+npm-debug.log
+.yarn-integrity
+
+# --- 2. Dependencies and Builds (DOTNET) ---
+# Visual Studio / VS Code
+.vs/
+*.suo
+*.user
+*.log
+*.ncb
+*.resource
+
+# Binaries
+[Bb]in/
+[Oo]bj/
+*.pdb
+*.ilk
+*.aps
+*.pch
+*.ipdb
+*.opendb
+
+# --- 3. Local/Config/Tooling ---
+# IDE/Tooling Files
+.vscode/
+Thumbs.db
+.DS_Store
+
+# Key Vault Authentication/Local Credentials
+tokenprovider.json
