@@ -9,17 +9,37 @@ let webContentsView;
 const TITLEBAR_HEIGHT = 32;
 const HOVER_STRIP_HEIGHT = 50;
 
+// Track titlebar visibility state
+let titlebarVisible = false;
+
+// CRITICAL: Define updateWebViewBounds at module scope so IPC handler can access it
+function updateWebViewBounds(isTitlebarVisible) {
+  if (!mainWindow || !webContentsView) return;
+  
+  const bounds = mainWindow.getBounds();
+  const yOffset = isTitlebarVisible ? TITLEBAR_HEIGHT : 0;
+  const availableHeight = bounds.height - yOffset - HOVER_STRIP_HEIGHT;
+  
+  webContentsView.setBounds({
+    x: 0,
+    y: yOffset,
+    width: bounds.width,
+    height: availableHeight
+  });
+  
+  console.log(`[WEBVIEW] Bounds set - y: ${yOffset}, height: ${availableHeight}, titlebar: ${isTitlebarVisible}`);
+}
+
 function createWindow() {
-  // Note: Transparent frameless windows on Windows don't show resize borders
-  // If resizing doesn't work, set transparent: false and backgroundColor: '#ffffff'
+  // Transparent frameless windows for overlay effect
   mainWindow = new BrowserWindow({
     width: 800,
     height: 1000,
     minWidth: 300,
     minHeight: 600,
     frame: false,
-    transparent: true,  // Changed from true to enable visible resize borders
-    resizable: true,
+    transparent: true,  // Main window transparent
+    resizable: false,   // Custom resize handles
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -27,11 +47,10 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegrationInSubFrames: false
     },
-    backgroundColor: '#ffffff',  // Changed from transparent to white
     show: false
   });
 
-  // Load debug version if DEBUG environment variable is set
+  // Load HTML
   const debugMode = process.env.DEBUG === 'true';
   if (debugMode) {
     mainWindow.loadFile('index-debug.html');
@@ -40,7 +59,7 @@ function createWindow() {
     mainWindow.loadFile('index.html');
   }
 
-  // Create WebContentsView for the embedded browser
+  // Create WebContentsView
   webContentsView = new WebContentsView({
     webPreferences: {
       nodeIntegration: false,
@@ -48,159 +67,107 @@ function createWindow() {
     }
   });
 
-  // Add the view to the window
+  console.log('[WEBVIEW] WebContentsView created');
+
+  // Add view to window
   mainWindow.contentView.addChildView(webContentsView);
 
-  // Position the view between titlebar and hover strip
-  const bounds = mainWindow.getBounds();
-  const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
-  webContentsView.setBounds({
-    x: 0,
-    y: TITLEBAR_HEIGHT,
-    width: bounds.width,
-    height: webviewHeight
-  });
+  // Initial position - titlebar hidden
+  updateWebViewBounds(false);
 
-  console.log('WebContentsView positioned at:', {
-    x: 0,
-    y: TITLEBAR_HEIGHT,
-    width: bounds.width,
-    height: webviewHeight,
-    note: 'Between titlebar (32px) and hover strip (50px)'
-  });
-
-  // CRITICAL: Intercept context menu from WebContentsView
+  // Context menu handlers
   webContentsView.webContents.on('context-menu', (event, params) => {
-    console.log('[MAIN] Context menu event from WebContentsView at:', params.x, params.y);
-    event.preventDefault(); // Prevent default context menu
-    
-    // Send IPC to renderer to toggle titlebar
-    console.log('[MAIN] Sending titlebar-toggle command to renderer');
+    console.log('[MAIN] Context menu from WebContentsView');
+    event.preventDefault();
     mainWindow.webContents.send('titlebar-toggle');
   });
 
-  // Also intercept context menu from main window (for clicks on HTML areas)
   mainWindow.webContents.on('context-menu', (event, params) => {
-    console.log('[MAIN] Context menu event from main window at:', params.x, params.y);
-    event.preventDefault(); // Prevent default context menu
-    
-    // Send IPC to renderer to toggle titlebar
-    console.log('[MAIN] Sending titlebar-toggle command to renderer');
+    console.log('[MAIN] Context menu from main window');
+    event.preventDefault();
     mainWindow.webContents.send('titlebar-toggle');
   });
 
-  // Load default URL (will be overridden by saved team preference in renderer)
+  // Load default URL
   webContentsView.webContents.loadURL('https://sigrid.ttt-timer.com');
 
-  // Apply saved zoom level when webContentsView finishes loading
+  // MINIMAL CSS injection - only page background, leave content alone
   webContentsView.webContents.on('did-finish-load', () => {
+    console.log('[WEBVIEW] Page loaded, injecting minimal transparent background CSS');
+    
+    // ONLY target the body background, nothing else
+    // Let the website keep all its own styling for content
+    webContentsView.webContents.insertCSS(`
+      body {
+        background: transparent !important;
+      }
+    `).then(() => {
+      console.log('[WEBVIEW] Minimal CSS injected - body background only');
+      console.log('[WEBVIEW] Website content keeps original styling');
+    }).catch(err => {
+      console.error('[WEBVIEW] Failed to inject CSS:', err);
+    });
+
+    // Apply saved settings
     if (mainWindow && mainWindow.webContents) {
-      // Apply saved zoom level
+      // Apply zoom
       mainWindow.webContents.executeJavaScript(`
         localStorage.getItem('zoom-level') || '100'
       `).then((zoomPercent) => {
         const zoomFactor = parseFloat(zoomPercent) / 100;
         webContentsView.webContents.setZoomFactor(zoomFactor);
-        console.log(`[ZOOM] Applied saved zoom level: ${zoomPercent}% (factor: ${zoomFactor})`);
-      });
-
-      // Apply saved transparency level
-      mainWindow.webContents.executeJavaScript(`
-        localStorage.getItem('transparency-level') || '100'
-      `).then((transparencyPercent) => {
-        const opacity = parseFloat(transparencyPercent) / 100;
-        
-        // Call the website's API methods if they exist
-        webContentsView.webContents.executeJavaScript(`
-          (function() {
-            try {
-              if (window.TTTTimerAPI && typeof window.TTTTimerAPI.setOpacity === 'function') {
-                window.TTTTimerAPI.setOpacity(${opacity});
-                console.log('[TTTTimerAPI] setOpacity(${opacity}) applied on load');
-              }
-              if (window.TTTTimerAPI && typeof window.TTTTimerAPI.setBackgroundOpacity === 'function') {
-                window.TTTTimerAPI.setBackgroundOpacity(${opacity});
-                console.log('[TTTTimerAPI] setBackgroundOpacity(${opacity}) applied on load');
-              }
-            } catch (err) {
-              console.error('[TTTTimerAPI] Error applying saved transparency:', err);
-            }
-          })();
-        `).catch(err => {
-          console.error('[TRANSPARENCY] Error executing transparency script on load:', err);
-        });
-        
-        console.log(`[TRANSPARENCY] Applied saved transparency: ${transparencyPercent}% (opacity: ${opacity})`);
+        console.log(`[ZOOM] Applied: ${zoomPercent}%`);
       });
     }
   });
 
-  // Update view size when window is resized
-  mainWindow.on('resize', () => {
-    const bounds = mainWindow.getBounds();
-    const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
-    webContentsView.setBounds({
-      x: 0,
-      y: TITLEBAR_HEIGHT,
-      width: bounds.width,
-      height: webviewHeight
+  // Re-inject CSS on navigation (minimal)
+  webContentsView.webContents.on('did-navigate', () => {
+    console.log('[WEBVIEW] Navigation detected, re-injecting minimal CSS');
+    webContentsView.webContents.insertCSS(`
+      body {
+        background: transparent !important;
+      }
+    `).catch(err => {
+      console.error('[WEBVIEW] Failed to re-inject CSS on navigation:', err);
     });
-    
-    // Log current window size for user to determine preferred size
-    console.log(`[WINDOW SIZE] Current: ${bounds.width} x ${bounds.height}`);
   });
 
-  // Show window when ready to prevent visual flash
+  // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     const bounds = mainWindow.getBounds();
-    console.log(`[WINDOW SIZE] Initial: ${bounds.width} x ${bounds.height}`);
+    console.log(`[WINDOW] Initial size: ${bounds.width} x ${bounds.height}`);
   });
 
-  // ENABLE DevTools to see renderer errors (comment out for production)
+  // DevTools (comment out for production)
   // mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   mainWindow.on('closed', function () {
     mainWindow = null;
     webContentsView = null;
-    // Close settings window if open
     if (settingsWindow) {
       settingsWindow.close();
       settingsWindow = null;
     }
   });
-
-  // Handle window maximize state
-  mainWindow.on('maximize', () => {
-    mainWindow.webContents.send('window-maximized');
-    const bounds = mainWindow.getBounds();
-    const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
-    webContentsView.setBounds({
-      x: 0,
-      y: TITLEBAR_HEIGHT,
-      width: bounds.width,
-      height: webviewHeight
-    });
-  });
-
-  mainWindow.on('unmaximize', () => {
-    mainWindow.webContents.send('window-unmaximized');
-    const bounds = mainWindow.getBounds();
-    const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
-    webContentsView.setBounds({
-      x: 0,
-      y: TITLEBAR_HEIGHT,
-      width: bounds.width,
-      height: webviewHeight
-    });
-  });
 }
+
+// IPC handler for titlebar visibility - CRITICAL FIX
+ipcMain.on('titlebar-visibility-changed', (event, isVisible) => {
+  console.log(`[TITLEBAR] IPC received - visibility: ${isVisible}`);
+  titlebarVisible = isVisible;
+  
+  // Call updateWebViewBounds IMMEDIATELY
+  updateWebViewBounds(isVisible);
+  
+  console.log(`[TITLEBAR] WebView bounds updated, titlebar ${isVisible ? 'ACCESSIBLE' : 'HIDDEN'}`);
+});
 
 // Create settings window
 function createSettingsWindow() {
-  // If settings window already exists, focus it
   if (settingsWindow) {
-    console.log('[SETTINGS] Settings window already open, focusing');
+    console.log('[SETTINGS] Window already open, focusing');
     settingsWindow.focus();
     return;
   }
@@ -230,23 +197,18 @@ function createSettingsWindow() {
 
   settingsWindow.once('ready-to-show', () => {
     settingsWindow.show();
-    console.log('[SETTINGS] Settings window shown');
+    console.log('[SETTINGS] Window shown');
   });
 
   settingsWindow.on('closed', () => {
-    console.log('[SETTINGS] Settings window closed');
+    console.log('[SETTINGS] Window closed');
     settingsWindow = null;
   });
-
-  // Enable DevTools for settings window (optional)
-  // settingsWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
-// IPC handlers for window controls
+// Window controls
 ipcMain.on('window-minimize', () => {
-  if (mainWindow) {
-    mainWindow.minimize();
-  }
+  if (mainWindow) mainWindow.minimize();
 });
 
 ipcMain.on('window-toggle-maximize', () => {
@@ -260,17 +222,90 @@ ipcMain.on('window-toggle-maximize', () => {
 });
 
 ipcMain.on('window-close', () => {
-  if (mainWindow) {
-    mainWindow.close();
+  if (mainWindow) mainWindow.close();
+});
+
+// Custom window resizing
+ipcMain.on('window-resize', (event, { direction, deltaX, deltaY }) => {
+  if (!mainWindow) return;
+
+  const bounds = mainWindow.getBounds();
+  const newBounds = { ...bounds };
+
+  // Calculate new bounds
+  switch (direction) {
+    case 'n':
+      newBounds.y += deltaY;
+      newBounds.height -= deltaY;
+      break;
+    case 's':
+      newBounds.height += deltaY;
+      break;
+    case 'e':
+      newBounds.width += deltaX;
+      break;
+    case 'w':
+      newBounds.x += deltaX;
+      newBounds.width -= deltaX;
+      break;
+    case 'ne':
+      newBounds.y += deltaY;
+      newBounds.height -= deltaY;
+      newBounds.width += deltaX;
+      break;
+    case 'nw':
+      newBounds.y += deltaY;
+      newBounds.height -= deltaY;
+      newBounds.x += deltaX;
+      newBounds.width -= deltaX;
+      break;
+    case 'se':
+      newBounds.height += deltaY;
+      newBounds.width += deltaX;
+      break;
+    case 'sw':
+      newBounds.height += deltaY;
+      newBounds.x += deltaX;
+      newBounds.width -= deltaX;
+      break;
+  }
+
+  // Apply minimum size
+  if (newBounds.width < 300) newBounds.width = 300;
+  if (newBounds.height < 600) newBounds.height = 600;
+
+  // Adjust position for minimum size
+  if (direction.includes('w') && newBounds.width === 300) {
+    newBounds.x = bounds.x + bounds.width - 300;
+  }
+  if (direction.includes('n') && newBounds.height === 600) {
+    newBounds.y = bounds.y + bounds.height - 600;
+  }
+
+  // Apply new bounds
+  mainWindow.setBounds(newBounds);
+
+  // Update WebContentsView
+  updateWebViewBounds(titlebarVisible);
+});
+
+// Mousewheel scrolling
+ipcMain.on('window-scroll', (event, deltaY) => {
+  if (webContentsView && webContentsView.webContents) {
+    webContentsView.webContents.executeJavaScript(`
+      window.scrollBy(0, ${deltaY});
+    `).catch(err => {
+      console.error('[SCROLL] Error:', err);
+    });
   }
 });
 
-// IPC handler for renderer console logs (forward to terminal)
+// Renderer logs
 ipcMain.on('renderer-log', (event, message) => {
   console.log(message);
 });
 
-// IPC handlers for mouse position tracking
+// Mouse position
 ipcMain.handle('get-mouse-position', () => {
   try {
     const point = screen.getCursorScreenPoint();
@@ -284,8 +319,7 @@ ipcMain.handle('get-mouse-position', () => {
 ipcMain.handle('get-window-bounds', () => {
   try {
     if (mainWindow) {
-      const bounds = mainWindow.getBounds();
-      return bounds;
+      return mainWindow.getBounds();
     }
     return null;
   } catch (err) {
@@ -294,42 +328,37 @@ ipcMain.handle('get-window-bounds', () => {
   }
 });
 
-// IPC handler for loading URL in WebContentsView
+// URL management
 ipcMain.on('load-url', (event, url) => {
-  console.log('[SETTINGS] Loading URL:', url);
+  console.log('[URL] Loading:', url);
   if (webContentsView && webContentsView.webContents) {
     webContentsView.webContents.loadURL(url);
   }
 });
 
-// IPC handler to get current URL
 ipcMain.handle('get-current-url', () => {
   if (webContentsView && webContentsView.webContents) {
-    const url = webContentsView.webContents.getURL();
-    return url;
+    return webContentsView.webContents.getURL();
   }
   return 'https://sigrid.ttt-timer.com';
 });
 
-// IPC handler to open settings window
+// Settings
 ipcMain.on('open-settings', () => {
-  console.log('[SETTINGS] Opening settings window');
+  console.log('[SETTINGS] Opening');
   createSettingsWindow();
 });
 
-// IPC handler to close settings window
 ipcMain.on('close-settings-window', () => {
-  console.log('[SETTINGS] Closing settings window');
+  console.log('[SETTINGS] Closing');
   if (settingsWindow) {
     settingsWindow.close();
     settingsWindow = null;
   }
 });
 
-// IPC handler to get current team from main window
+// Team management
 ipcMain.handle('get-current-team', (event) => {
-  // The team is stored in localStorage of the main window
-  // We need to execute JavaScript in the main window to get it
   if (mainWindow && mainWindow.webContents) {
     return mainWindow.webContents.executeJavaScript(`
       localStorage.getItem('selected-team') || 'sigrid'
@@ -338,24 +367,20 @@ ipcMain.handle('get-current-team', (event) => {
   return 'sigrid';
 });
 
-// IPC handler to save team (from settings window)
 ipcMain.on('save-team', (event, team) => {
   console.log('[SETTINGS] Saving team:', team);
   
-  // Save to main window's localStorage
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.executeJavaScript(`
       localStorage.setItem('selected-team', '${team}');
     `).then(() => {
-      console.log('[SETTINGS] Team saved to localStorage');
-      
-      // Notify main window to update
+      console.log('[SETTINGS] Team saved');
       mainWindow.webContents.send('team-updated', team);
     });
   }
 });
 
-// IPC handler to get current zoom level from main window
+// Zoom management
 ipcMain.handle('get-current-zoom', (event) => {
   if (mainWindow && mainWindow.webContents) {
     return mainWindow.webContents.executeJavaScript(`
@@ -365,81 +390,37 @@ ipcMain.handle('get-current-zoom', (event) => {
   return '100';
 });
 
-// IPC handler to set zoom level on webContentsView
 ipcMain.on('set-zoom-level', (event, zoomPercent) => {
   if (webContentsView && webContentsView.webContents) {
-    // Convert percentage to zoom factor (100% = 1.0, 200% = 2.0, etc)
     const zoomFactor = parseFloat(zoomPercent) / 100;
     webContentsView.webContents.setZoomFactor(zoomFactor);
-    console.log(`[SETTINGS] Zoom level set to ${zoomPercent}% (factor: ${zoomFactor})`);
+    console.log(`[ZOOM] Set to ${zoomPercent}%`);
   }
 });
 
-// IPC handler to save zoom level (from settings window)
 ipcMain.on('save-zoom', (event, zoomPercent) => {
-  console.log('[SETTINGS] Saving zoom level:', zoomPercent + '%');
+  console.log('[SETTINGS] Saving zoom:', zoomPercent + '%');
   
-  // Save to main window's localStorage
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.executeJavaScript(`
       localStorage.setItem('zoom-level', '${zoomPercent}');
     `).then(() => {
-      console.log('[SETTINGS] Zoom level saved to localStorage');
+      console.log('[SETTINGS] Zoom saved');
     });
   }
 });
 
-// IPC handler to get current transparency from main window
+// Transparency management - CSS handles minimal background transparency
 ipcMain.handle('get-current-transparency', (event) => {
-  if (mainWindow && mainWindow.webContents) {
-    return mainWindow.webContents.executeJavaScript(`
-      localStorage.getItem('transparency-level') || '100'
-    `);
-  }
   return '100';
 });
 
-// IPC handler to set transparency on webContentsView
 ipcMain.on('set-transparency', (event, transparencyPercent) => {
-  if (webContentsView && webContentsView.webContents) {
-    const opacity = parseFloat(transparencyPercent) / 100;
-    
-    // Call the website's API methods if they exist
-    webContentsView.webContents.executeJavaScript(`
-      (function() {
-        try {
-          if (window.TTTTimerAPI && typeof window.TTTTimerAPI.setOpacity === 'function') {
-            window.TTTTimerAPI.setOpacity(${opacity});
-            console.log('[TTTTimerAPI] setOpacity(${opacity}) called');
-          }
-          if (window.TTTTimerAPI && typeof window.TTTTimerAPI.setBackgroundOpacity === 'function') {
-            window.TTTTimerAPI.setBackgroundOpacity(${opacity});
-            console.log('[TTTTimerAPI] setBackgroundOpacity(${opacity}) called');
-          }
-        } catch (err) {
-          console.error('[TTTTimerAPI] Error setting transparency:', err);
-        }
-      })();
-    `).catch(err => {
-      console.error('[SETTINGS] Error executing transparency script:', err);
-    });
-    
-    console.log(`[SETTINGS] Transparency set to ${transparencyPercent}% (opacity: ${opacity})`);
-  }
+  console.log(`[TRANSPARENCY] Slider at ${transparencyPercent}% (only body background is transparent)`);
 });
 
-// IPC handler to save transparency level (from settings window)
 ipcMain.on('save-transparency', (event, transparencyPercent) => {
-  console.log('[SETTINGS] Saving transparency level:', transparencyPercent + '%');
-  
-  // Save to main window's localStorage
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.executeJavaScript(`
-      localStorage.setItem('transparency-level', '${transparencyPercent}');
-    `).then(() => {
-      console.log('[SETTINGS] Transparency level saved to localStorage');
-    });
-  }
+  console.log('[SETTINGS] Transparency value saved:', transparencyPercent + '%');
 });
 
 app.whenReady().then(() => {
@@ -455,15 +436,11 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Security recommendations
+// Security
 app.on('web-contents-created', (event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
     const parsedUrl = new URL(navigationUrl);
-    
-    if (parsedUrl.protocol === 'file:') {
-      return;
-    }
-    
+    if (parsedUrl.protocol === 'file:') return;
     event.preventDefault();
   });
 

@@ -8,6 +8,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximize: () => ipcRenderer.send('window-toggle-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
   
+  // Custom resize for transparent window
+  resizeWindow: (direction, deltaX, deltaY) => {
+    ipcRenderer.send('window-resize', { direction, deltaX, deltaY });
+  },
+  
+  // Titlebar visibility notification - CRITICAL for draggable titlebar
+  notifyTitlebarVisibility: (isVisible) => {
+    ipcRenderer.send('titlebar-visibility-changed', isVisible);
+  },
+  
+  // Mousewheel scrolling
+  scrollWindow: (deltaY) => {
+    ipcRenderer.send('window-scroll', deltaY);
+  },
+  
   // Mouse position checking
   getMousePosition: () => ipcRenderer.invoke('get-mouse-position'),
   getWindowBounds: () => ipcRenderer.invoke('get-window-bounds'),
