@@ -1,19 +1,9 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, WebContentsView } = require('electron');
 const path = require('path');
 
-// Enable @electron/remote for window controls
-// Note: You need to install @electron/remote first:
-// npm install @electron/remote
-let remoteMain;
-try {
-  remoteMain = require('@electron/remote/main');
-  remoteMain.initialize();
-} catch (err) {
-  console.log('@electron/remote not installed - window controls may not work');
-  console.log('Run: npm install @electron/remote');
-}
-
 let mainWindow;
+let webContentsView;
+
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -23,23 +13,59 @@ function createWindow() {
     minHeight: 600,
     frame: false,
     transparent: true,
+    alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webviewTag: true,
       nodeIntegrationInSubFrames: false
     },
     backgroundColor: '#00000000',
     show: false // Don't show until ready
   });
 
-  // Enable remote for this window if available
-  if (remoteMain) {
-    remoteMain.enable(mainWindow.webContents);
+  // Load debug version if DEBUG environment variable is set
+  const debugMode = process.env.DEBUG === 'true';
+  if (debugMode) {
+    mainWindow.loadFile('index-debug.html');
+    console.log('Loading in DEBUG mode');
+  } else {
+    mainWindow.loadFile('index.html');
   }
 
-  mainWindow.loadFile('index.html');
+  // Create WebContentsView for the embedded browser
+  webContentsView = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  // Add the view to the window
+  mainWindow.contentView.addChildView(webContentsView);
+
+  // Position the view below the titlebar (32px)
+  const bounds = mainWindow.getBounds();
+  webContentsView.setBounds({
+    x: 0,
+    y: 32,
+    width: bounds.width,
+    height: bounds.height - 32
+  });
+
+  // Load the default URL
+  webContentsView.webContents.loadURL('https://sigrid.ttt-timer.com');
+
+  // Update view size when window is resized
+  mainWindow.on('resize', () => {
+    const bounds = mainWindow.getBounds();
+    webContentsView.setBounds({
+      x: 0,
+      y: 32,
+      width: bounds.width,
+      height: bounds.height - 32
+    });
+  });
 
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
@@ -48,20 +74,89 @@ function createWindow() {
 
   // Open DevTools in development (comment out for production)
   // mainWindow.webContents.openDevTools();
+  // webContentsView.webContents.openDevTools();
 
   mainWindow.on('closed', function () {
     mainWindow = null;
+    webContentsView = null;
   });
 
   // Handle window maximize state
   mainWindow.on('maximize', () => {
     mainWindow.webContents.send('window-maximized');
+    // Update view bounds
+    const bounds = mainWindow.getBounds();
+    webContentsView.setBounds({
+      x: 0,
+      y: 32,
+      width: bounds.width,
+      height: bounds.height - 32
+    });
   });
 
   mainWindow.on('unmaximize', () => {
     mainWindow.webContents.send('window-unmaximized');
+    // Update view bounds
+    const bounds = mainWindow.getBounds();
+    webContentsView.setBounds({
+      x: 0,
+      y: 32,
+      width: bounds.width,
+      height: bounds.height - 32
+    });
   });
 }
+
+// IPC handlers for window controls
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.on('window-toggle-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
+});
+
+// IPC handlers for mouse position tracking
+ipcMain.handle('get-mouse-position', () => {
+  const point = screen.getCursorScreenPoint();
+  return { x: point.x, y: point.y };
+});
+
+ipcMain.handle('get-window-bounds', () => {
+  if (mainWindow) {
+    return mainWindow.getBounds();
+  }
+  return null;
+});
+
+// IPC handler for loading URL in WebContentsView
+ipcMain.on('load-url', (event, url) => {
+  if (webContentsView && webContentsView.webContents) {
+    webContentsView.webContents.loadURL(url);
+  }
+});
+
+// IPC handler to get current URL
+ipcMain.handle('get-current-url', () => {
+  if (webContentsView && webContentsView.webContents) {
+    return webContentsView.webContents.getURL();
+  }
+  return 'https://sigrid.ttt-timer.com';
+});
 
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
-    <title>WebView App</title>
+    <title>TTT Timer</title>
     <style>
         * {
             margin: 0;
@@ -33,7 +33,7 @@
         #window-controls {
             -webkit-app-region: no-drag;
             display: flex;
-            gap: 8px;
+            gap: 0;
         }
 
         .window-button {
@@ -48,6 +48,21 @@
         }
 
         .window-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        #config-btn {
+            width: 46px;
+            height: 32px;
+            background: transparent;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+
+        #config-btn:hover {
             background: rgba(255, 255, 255, 0.1);
         }
 
@@ -67,12 +82,6 @@
             width: 100%;
             height: calc(100vh - 32px);
             background: white;
-        }
-
-        webview {
-            width: 100%;
-            height: 100%;
-            border: none;
         }
 
         #url-config {
@@ -116,31 +125,53 @@
             background: #106ebe;
         }
 
-        #config-btn {
-            -webkit-app-region: no-drag;
-            background: transparent;
-            border: none;
+        #hover-message {
+            position: fixed;
+            bottom: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 30, 30, 0.95);
             color: white;
-            cursor: pointer;
-            padding: 5px 10px;
-            font-size: 12px;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 2000;
+            backdrop-filter: blur(10px);
+            pointer-events: none;
+            transition: bottom 0.3s ease-out;
         }
 
-        #config-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
+        #hover-message.show {
+            bottom: 5px;
+        }
+
+        #debug-info {
+            position: fixed;
+            top: 40px;
+            left: 10px;
+            background: rgba(30, 30, 30, 0.95);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: monospace;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            line-height: 1.4;
         }
     </style>
 </head>
 <body>
     <div id="titlebar">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span>WebView App</span>
-            <button id="config-btn">⚙ Configure URL</button>
+        <div style="display: flex; align-items: center;">
+            <span id="title-text">TTT Timer</span>
         </div>
         <div id="window-controls">
-            <button class="window-button" id="minimize-btn">―</button>
-            <button class="window-button" id="maximize-btn">□</button>
-            <button class="window-button" id="close-btn">✕</button>
+            <button id="config-btn" title="Configure URL">⚙</button>
+            <button class="window-button" id="minimize-btn" title="Minimize">-</button>
+            <button class="window-button" id="maximize-btn" title="Maximize">[]</button>
+            <button class="window-button" id="close-btn" title="Close">X</button>
         </div>
     </div>
 
@@ -150,31 +181,38 @@
     </div>
 
     <div id="webview-container">
-        <webview id="webview" src="https://sigrid.ttt-timer.com"></webview>
+        <!-- WebContentsView will be added here by main process -->
     </div>
 
-    <script>
-        const { ipcRenderer } = require('electron');
-        const remote = require('@electron/remote');
+    <div id="debug-info">
+        <strong>DEBUG INFO:</strong><br>
+        Events: <span id="event-log">None</span><br>
+        State: <span id="state-log">Idle</span><br>
+        isInWindow: <span id="flag-log">false</span><br>
+        <br>
+        Last Event Details:<br>
+        Type: <span id="event-type-log">-</span><br>
+        relatedTarget: <span id="related-target-log">-</span><br>
+        contains(): <span id="contains-log">-</span><br>
+        <br>
+        Mouse Position:<br>
+        X: <span id="mouse-x">-</span>, Y: <span id="mouse-y">-</span>
+    </div>
 
+    <div id="hover-message">RIGHT CLICK FOR CONTROLS</div>
+
+    <script>
         // Window controls
         document.getElementById('minimize-btn').addEventListener('click', () => {
-            const window = remote.getCurrentWindow();
-            window.minimize();
+            window.electronAPI.minimizeWindow();
         });
 
         document.getElementById('maximize-btn').addEventListener('click', () => {
-            const window = remote.getCurrentWindow();
-            if (window.isMaximized()) {
-                window.unmaximize();
-            } else {
-                window.maximize();
-            }
+            window.electronAPI.toggleMaximize();
         });
 
         document.getElementById('close-btn').addEventListener('click', () => {
-            const window = remote.getCurrentWindow();
-            window.close();
+            window.electronAPI.closeWindow();
         });
 
         // URL configuration
@@ -182,7 +220,15 @@
         const urlConfig = document.getElementById('url-config');
         const urlInput = document.getElementById('url-input');
         const urlSubmit = document.getElementById('url-submit');
-        const webview = document.getElementById('webview');
+        const titleText = document.getElementById('title-text');
+
+        function updateTitle(url) {
+            if (url) {
+                titleText.textContent = `TTT Timer - ${url}`;
+            } else {
+                titleText.textContent = 'TTT Timer';
+            }
+        }
 
         configBtn.addEventListener('click', () => {
             urlConfig.classList.toggle('visible');
@@ -191,9 +237,10 @@
         urlSubmit.addEventListener('click', () => {
             const url = urlInput.value.trim();
             if (url) {
-                webview.src = url;
+                window.electronAPI.loadURL(url);
                 urlConfig.classList.remove('visible');
                 localStorage.setItem('webview-url', url);
+                updateTitle(url);
             }
         });
 
@@ -204,26 +251,140 @@
         });
 
         // Load saved URL on startup
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             const savedUrl = localStorage.getItem('webview-url');
             if (savedUrl) {
                 urlInput.value = savedUrl;
-                webview.src = savedUrl;
+                window.electronAPI.loadURL(savedUrl);
+                updateTitle(savedUrl);
+            } else {
+                const currentUrl = await window.electronAPI.getCurrentURL();
+                urlInput.value = currentUrl;
+                updateTitle(currentUrl);
             }
         });
 
-        // Webview event listeners
-        webview.addEventListener('did-start-loading', () => {
-            console.log('Loading started');
-        });
+        // Hover message functionality with window bounds checking
+        const hoverMessage = document.getElementById('hover-message');
+        const eventLog = document.getElementById('event-log');
+        const stateLog = document.getElementById('state-log');
+        const flagLog = document.getElementById('flag-log');
+        const eventTypeLog = document.getElementById('event-type-log');
+        const relatedTargetLog = document.getElementById('related-target-log');
+        const containsLog = document.getElementById('contains-log');
+        const mouseXLog = document.getElementById('mouse-x');
+        const mouseYLog = document.getElementById('mouse-y');
+        let hoverTimeout = null;
+        let hideTimeout = null;
+        let isInWindow = false;
+        let enterCount = 0;
+        let leaveCount = 0;
 
-        webview.addEventListener('did-stop-loading', () => {
-            console.log('Loading completed');
-        });
+        function logEvent(event) {
+            eventLog.textContent = `Enter: ${enterCount}, Leave: ${leaveCount}, Last: ${event}`;
+        }
 
-        webview.addEventListener('did-fail-load', (e) => {
-            console.error('Failed to load:', e);
-        });
+        function logState(state) {
+            stateLog.textContent = state;
+        }
+
+        function logFlag() {
+            flagLog.textContent = isInWindow;
+        }
+
+        function logEventDetails(eventType, info) {
+            eventTypeLog.textContent = eventType;
+            relatedTargetLog.textContent = info || '-';
+        }
+
+        function startAnimation() {
+            logState('Waiting 0.5s...');
+            
+            if (hoverTimeout) clearTimeout(hoverTimeout);
+            if (hideTimeout) clearTimeout(hideTimeout);
+            
+            hoverMessage.classList.remove('show');
+
+            hoverTimeout = setTimeout(() => {
+                logState('Showing message...');
+                hoverMessage.classList.add('show');
+                
+                hideTimeout = setTimeout(() => {
+                    logState('Hiding message...');
+                    hoverMessage.classList.remove('show');
+                    logState('Idle');
+                }, 3000);
+            }, 500);
+        }
+
+        function stopAnimation() {
+            logState('Reset on leave');
+            
+            if (hoverTimeout) clearTimeout(hoverTimeout);
+            if (hideTimeout) clearTimeout(hideTimeout);
+            
+            hoverMessage.classList.remove('show');
+            
+            setTimeout(() => {
+                logState('Idle');
+            }, 100);
+        }
+
+        // Check if mouse is within window bounds
+        async function checkMouseInWindow() {
+            try {
+                const mousePos = await window.electronAPI.getMousePosition();
+                const windowBounds = await window.electronAPI.getWindowBounds();
+                
+                if (!windowBounds) {
+                    relatedTargetLog.textContent = 'No window bounds';
+                    return;
+                }
+                
+                mouseXLog.textContent = `${mousePos.x} (screen)`;
+                mouseYLog.textContent = `${mousePos.y} (screen)`;
+                
+                const inBounds = mousePos.x >= windowBounds.x && 
+                                mousePos.x <= windowBounds.x + windowBounds.width &&
+                                mousePos.y >= windowBounds.y && 
+                                mousePos.y <= windowBounds.y + windowBounds.height;
+                
+                const boundsInfo = `Win: [${windowBounds.x},${windowBounds.y}] ${windowBounds.width}x${windowBounds.height}`;
+                containsLog.textContent = `${inBounds ? 'IN' : 'OUT'} | ${boundsInfo}`;
+                
+                if (inBounds && !isInWindow) {
+                    enterCount++;
+                    logEvent('BOUNDS-ENTER');
+                    logEventDetails('bounds check', `entered at ${mousePos.x},${mousePos.y}`);
+                    isInWindow = true;
+                    logFlag();
+                    startAnimation();
+                } else if (!inBounds && isInWindow) {
+                    leaveCount++;
+                    logEvent('BOUNDS-LEAVE');
+                    logEventDetails('bounds check', `left at ${mousePos.x},${mousePos.y}`);
+                    isInWindow = false;
+                    logFlag();
+                    stopAnimation();
+                }
+            } catch (err) {
+                console.error('Error checking mouse position:', err);
+                relatedTargetLog.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // Poll mouse position every 50ms
+        setInterval(checkMouseInWindow, 50);
+
+        // Initialize debug display
+        logState('Idle');
+        logEvent('None');
+        logFlag();
+        eventTypeLog.textContent = 'Using WebContentsView';
+        relatedTargetLog.textContent = '-';
+        containsLog.textContent = '-';
+        mouseXLog.textContent = '-';
+        mouseYLog.textContent = '-';
     </script>
 </body>
 </html>
