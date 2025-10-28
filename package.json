@@ -53,7 +53,9 @@
     "files": [
       "main.js",
       "preload.js",
+      "settings-preload.js",
       "index.html",
+      "settings.html",
       "index-debug.html",
       "package.json"
     ]

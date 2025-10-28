@@ -29,6 +29,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
   
+  // Settings window control
+  openSettings: () => ipcRenderer.send('open-settings'),
+  
+  // Team update listener (from settings window)
+  onTeamUpdated: (callback) => {
+    ipcRenderer.on('team-updated', (event, team) => {
+      callback(team);
+    });
+  },
+  
   // Original IPC methods
   send: (channel, data) => {
     // Whitelist channels

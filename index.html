@@ -12,14 +12,14 @@
         }
 
         body {
-            background: transparent;
+            background: white;
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
 
         #titlebar {
             height: 32px;
-            background: rgba(30, 30, 30, 0.9);
+            background: rgb(30, 30, 30);
             -webkit-app-region: drag;
             display: flex;
             align-items: center;
@@ -97,47 +97,6 @@
             z-index: 1000;
         }
 
-        #url-config {
-            position: fixed;
-            top: 40px;
-            right: 10px;
-            background: rgba(30, 30, 30, 0.95);
-            padding: 10px;
-            border-radius: 4px;
-            display: none;
-            z-index: 6000;
-            backdrop-filter: blur(10px);
-        }
-
-        #url-config.visible {
-            display: block;
-        }
-
-        #url-input {
-            width: 300px;
-            padding: 6px;
-            border: 1px solid #555;
-            background: #2a2a2a;
-            color: white;
-            border-radius: 3px;
-            font-size: 12px;
-        }
-
-        #url-submit {
-            padding: 6px 12px;
-            margin-left: 5px;
-            background: #0078d4;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-
-        #url-submit:hover {
-            background: #106ebe;
-        }
-
         /* Hover message strip at bottom */
         #hover-strip {
             height: 50px;
@@ -179,16 +138,11 @@
             <span id="title-text">TTT Timer</span>
         </div>
         <div id="window-controls">
-            <button id="config-btn" title="Configure URL">⚙</button>
+            <button id="config-btn" title="Settings">⚙</button>
             <button class="window-button" id="minimize-btn" title="Minimize">-</button>
             <button class="window-button" id="maximize-btn" title="Maximize">[]</button>
             <button class="window-button" id="close-btn" title="Close">X</button>
         </div>
-    </div>
-
-    <div id="url-config">
-        <input type="text" id="url-input" placeholder="Enter URL (e.g., https://example.com)" value="https://www.google.com">
-        <button id="url-submit">Load</button>
     </div>
 
     <div id="webview-container">
@@ -200,164 +154,112 @@
     </div>
 
     <script>
-        // Helper to log to both console and main process (for terminal visibility)
+        // Helper to log to console and main process
         function log(message) {
             console.log(message);
             window.electronAPI.logToMain(message);
         }
 
-        log('=== TTT Timer Started (IPC-based Titlebar Toggle) ===');
-
         // Titlebar toggle state
         const titlebar = document.getElementById('titlebar');
         let titlebarVisible = false;
-        let toggleCount = 0;
 
         // Show titlebar
         function showTitlebar() {
-            log(`[TITLEBAR] showTitlebar() called. Current state: ${titlebarVisible}`);
             if (!titlebarVisible) {
-                log('[TITLEBAR] Adding .visible class to titlebar');
                 titlebar.classList.add('visible');
                 titlebarVisible = true;
-                log('[TITLEBAR] Titlebar should now be sliding down (0.3s animation)');
-                
-                // Log computed styles to verify
-                setTimeout(() => {
-                    const computed = window.getComputedStyle(titlebar);
-                    log(`[TITLEBAR] After animation - transform: ${computed.transform}`);
-                }, 350);
-            } else {
-                log('[TITLEBAR] Already visible, no action taken');
             }
         }
 
         // Hide titlebar
         function hideTitlebar() {
-            log(`[TITLEBAR] hideTitlebar() called. Current state: ${titlebarVisible}`);
             if (titlebarVisible) {
-                log('[TITLEBAR] Removing .visible class from titlebar');
                 titlebar.classList.remove('visible');
                 titlebarVisible = false;
-                log('[TITLEBAR] Titlebar should now be sliding up (0.3s animation)');
-                
-                // Log computed styles to verify
-                setTimeout(() => {
-                    const computed = window.getComputedStyle(titlebar);
-                    log(`[TITLEBAR] After animation - transform: ${computed.transform}`);
-                }, 350);
-            } else {
-                log('[TITLEBAR] Already hidden, no action taken');
             }
         }
 
         // Toggle titlebar (called from IPC when right-click detected in main process)
         function toggleTitlebar() {
-            toggleCount++;
-            log(`\n>>> TITLEBAR TOGGLE #${toggleCount} (from IPC) <<<`);
-            log(`[TITLEBAR] Current state: ${titlebarVisible ? 'visible' : 'hidden'}`);
-            
             if (titlebarVisible) {
-                log('[TITLEBAR] Hiding titlebar');
                 hideTitlebar();
             } else {
-                log('[TITLEBAR] Showing titlebar');
                 showTitlebar();
             }
         }
 
         // Listen for titlebar toggle commands from main process
         window.electronAPI.onTitlebarToggle(() => {
-            log('[IPC] Received titlebar-toggle command from main process');
             toggleTitlebar();
         });
 
         // Left-click anywhere (except titlebar) hides titlebar
         document.addEventListener('click', (e) => {
-            // Check if click was on titlebar or its children
             const onTitlebar = titlebar.contains(e.target);
             
             if (!onTitlebar && titlebarVisible) {
-                log(`[TITLEBAR] Click outside titlebar detected - hiding`);
                 hideTitlebar();
             }
         });
 
-        // Log initial titlebar state
-        setTimeout(() => {
-            const computed = window.getComputedStyle(titlebar);
-            log(`[TITLEBAR] Initial state:`);
-            log(`[TITLEBAR]   - titlebarVisible: ${titlebarVisible}`);
-            log(`[TITLEBAR]   - classList: ${titlebar.classList.toString() || '(none)'}`);
-            log(`[TITLEBAR]   - transform: ${computed.transform}`);
-            log(`[TITLEBAR]   - z-index: ${computed.zIndex}`);
-        }, 100);
-
         // Window controls
         document.getElementById('minimize-btn').addEventListener('click', () => {
-            log('[WINDOW] Minimize button clicked');
             window.electronAPI.minimizeWindow();
         });
 
         document.getElementById('maximize-btn').addEventListener('click', () => {
-            log('[WINDOW] Maximize button clicked');
             window.electronAPI.toggleMaximize();
         });
 
         document.getElementById('close-btn').addEventListener('click', () => {
-            log('[WINDOW] Close button clicked');
             window.electronAPI.closeWindow();
         });
 
-        // URL configuration
+        // Settings button - opens separate settings window
         const configBtn = document.getElementById('config-btn');
-        const urlConfig = document.getElementById('url-config');
-        const urlInput = document.getElementById('url-input');
-        const urlSubmit = document.getElementById('url-submit');
         const titleText = document.getElementById('title-text');
 
-        function updateTitle(url) {
-            if (url) {
-                titleText.textContent = `TTT Timer - ${url}`;
+        configBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.electronAPI.openSettings();
+        });
+
+        // Capitalize first letter for display
+        function capitalizeTeam(team) {
+            return team.charAt(0).toUpperCase() + team.slice(1);
+        }
+
+        function updateTitle(team) {
+            if (team) {
+                titleText.textContent = `TTT Timer - ${capitalizeTeam(team)}`;
             } else {
                 titleText.textContent = 'TTT Timer';
             }
         }
 
-        configBtn.addEventListener('click', () => {
-            log('[CONFIG] Config button clicked');
-            urlConfig.classList.toggle('visible');
+        function getTeamUrl(team) {
+            return `https://${team}.ttt-timer.com`;
+        }
+
+        // Listen for team updates from settings window
+        window.electronAPI.onTeamUpdated((team) => {
+            log(`[SETTINGS] Team updated to: ${team}`);
+            updateTitle(team);
+            const teamUrl = getTeamUrl(team);
+            window.electronAPI.loadURL(teamUrl);
         });
 
-        urlSubmit.addEventListener('click', () => {
-            const url = urlInput.value.trim();
-            log(`[CONFIG] Submit clicked with URL: ${url}`);
-            if (url) {
-                window.electronAPI.loadURL(url);
-                urlConfig.classList.remove('visible');
-                localStorage.setItem('webview-url', url);
-                updateTitle(url);
-            }
-        });
-
-        urlInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                urlSubmit.click();
-            }
-        });
-
-        // Load saved URL on startup
+        // Load saved team on startup
         window.addEventListener('DOMContentLoaded', async () => {
-            const savedUrl = localStorage.getItem('webview-url');
-            if (savedUrl) {
-                urlInput.value = savedUrl;
-                window.electronAPI.loadURL(savedUrl);
-                updateTitle(savedUrl);
-            } else {
-                const currentUrl = await window.electronAPI.getCurrentURL();
-                urlInput.value = currentUrl;
-                updateTitle(currentUrl);
-            }
+            const savedTeam = localStorage.getItem('selected-team') || 'sigrid';
+            
+            // Update title
+            updateTitle(savedTeam);
+            
+            // Load the team URL
+            const teamUrl = getTeamUrl(savedTeam);
+            window.electronAPI.loadURL(teamUrl);
         });
 
         // Hover message functionality with window bounds checking
@@ -365,31 +267,23 @@
         let hoverTimeout = null;
         let hideTimeout = null;
         let isInWindow = false;
-        let enterCount = 0;
-        let leaveCount = 0;
 
         function startAnimation() {
-            log('🟢 ENTER - Starting hover animation (0.5s delay)');
-            
             if (hoverTimeout) clearTimeout(hoverTimeout);
             if (hideTimeout) clearTimeout(hideTimeout);
             
             hoverMessage.classList.remove('show');
 
             hoverTimeout = setTimeout(() => {
-                log('  ↳ Showing hover message now');
                 hoverMessage.classList.add('show');
                 
                 hideTimeout = setTimeout(() => {
-                    log('  ↳ Hiding hover message (3s elapsed)');
                     hoverMessage.classList.remove('show');
                 }, 3000);
             }, 500);
         }
 
         function stopAnimation() {
-            log('🔴 LEAVE - Stopping hover animation');
-            
             if (hoverTimeout) clearTimeout(hoverTimeout);
             if (hideTimeout) clearTimeout(hideTimeout);
             
@@ -412,13 +306,9 @@
                                 mousePos.y <= windowBounds.y + windowBounds.height;
                 
                 if (inBounds && !isInWindow) {
-                    enterCount++;
-                    log(`>>> ENTER #${enterCount}: Mouse (${mousePos.x},${mousePos.y})`);
                     isInWindow = true;
                     startAnimation();
                 } else if (!inBounds && isInWindow) {
-                    leaveCount++;
-                    log(`<<< LEAVE #${leaveCount}: Mouse (${mousePos.x},${mousePos.y})`);
                     isInWindow = false;
                     stopAnimation();
                 }
@@ -428,13 +318,7 @@
         }
 
         // Poll mouse position every 50ms
-        log('Starting mouse position polling (every 50ms)...');
         setInterval(checkMouseInWindow, 50);
-
-        log('=== Initialization Complete ===');
-        log('Right-click anywhere to toggle titlebar (captured in main process)');
-        log('Left-click outside titlebar to hide it');
-        log('Watch for [MAIN] and [TITLEBAR] logs to see toggle behavior\n');
     </script>
 </body>
 </html>
