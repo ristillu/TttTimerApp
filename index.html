@@ -28,6 +28,17 @@
             color: white;
             font-size: 13px;
             backdrop-filter: blur(10px);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 5000;
+            transform: translateY(-32px);
+            transition: transform 0.3s ease-out;
+        }
+
+        #titlebar.visible {
+            transform: translateY(0);
         }
 
         #window-controls {
@@ -80,19 +91,21 @@
 
         #webview-container {
             width: 100%;
-            height: calc(100vh - 32px);
+            height: calc(100vh - 50px);
             background: white;
+            position: relative;
+            z-index: 1000;
         }
 
         #url-config {
-            position: absolute;
+            position: fixed;
             top: 40px;
             right: 10px;
             background: rgba(30, 30, 30, 0.95);
             padding: 10px;
             border-radius: 4px;
             display: none;
-            z-index: 1000;
+            z-index: 6000;
             backdrop-filter: blur(10px);
         }
 
@@ -125,40 +138,38 @@
             background: #106ebe;
         }
 
-        #hover-message {
+        /* Hover message strip at bottom */
+        #hover-strip {
+            height: 50px;
+            background: #ffffff;
             position: fixed;
-            bottom: -60px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(30, 30, 30, 0.95);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: 500;
+            bottom: 0;
+            left: 0;
+            right: 0;
             z-index: 2000;
-            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        #hover-message {
+            background: rgba(0, 120, 212, 0.95);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
             pointer-events: none;
-            transition: bottom 0.3s ease-out;
         }
 
         #hover-message.show {
-            bottom: 5px;
-        }
-
-        #debug-info {
-            position: fixed;
-            top: 40px;
-            left: 10px;
-            background: rgba(30, 30, 30, 0.95);
-            color: white;
-            padding: 10px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-family: monospace;
-            z-index: 1000;
-            backdrop-filter: blur(10px);
-            line-height: 1.4;
+            opacity: 1;
+            transform: translateY(0);
         }
     </style>
 </head>
@@ -184,34 +195,117 @@
         <!-- WebContentsView will be added here by main process -->
     </div>
 
-    <div id="debug-info">
-        <strong>DEBUG INFO:</strong><br>
-        Events: <span id="event-log">None</span><br>
-        State: <span id="state-log">Idle</span><br>
-        isInWindow: <span id="flag-log">false</span><br>
-        <br>
-        Last Event Details:<br>
-        Type: <span id="event-type-log">-</span><br>
-        relatedTarget: <span id="related-target-log">-</span><br>
-        contains(): <span id="contains-log">-</span><br>
-        <br>
-        Mouse Position:<br>
-        X: <span id="mouse-x">-</span>, Y: <span id="mouse-y">-</span>
+    <div id="hover-strip">
+        <div id="hover-message">RIGHT CLICK FOR CONTROLS</div>
     </div>
 
-    <div id="hover-message">RIGHT CLICK FOR CONTROLS</div>
-
     <script>
+        // Helper to log to both console and main process (for terminal visibility)
+        function log(message) {
+            console.log(message);
+            window.electronAPI.logToMain(message);
+        }
+
+        log('=== TTT Timer Started (IPC-based Titlebar Toggle) ===');
+
+        // Titlebar toggle state
+        const titlebar = document.getElementById('titlebar');
+        let titlebarVisible = false;
+        let toggleCount = 0;
+
+        // Show titlebar
+        function showTitlebar() {
+            log(`[TITLEBAR] showTitlebar() called. Current state: ${titlebarVisible}`);
+            if (!titlebarVisible) {
+                log('[TITLEBAR] Adding .visible class to titlebar');
+                titlebar.classList.add('visible');
+                titlebarVisible = true;
+                log('[TITLEBAR] Titlebar should now be sliding down (0.3s animation)');
+                
+                // Log computed styles to verify
+                setTimeout(() => {
+                    const computed = window.getComputedStyle(titlebar);
+                    log(`[TITLEBAR] After animation - transform: ${computed.transform}`);
+                }, 350);
+            } else {
+                log('[TITLEBAR] Already visible, no action taken');
+            }
+        }
+
+        // Hide titlebar
+        function hideTitlebar() {
+            log(`[TITLEBAR] hideTitlebar() called. Current state: ${titlebarVisible}`);
+            if (titlebarVisible) {
+                log('[TITLEBAR] Removing .visible class from titlebar');
+                titlebar.classList.remove('visible');
+                titlebarVisible = false;
+                log('[TITLEBAR] Titlebar should now be sliding up (0.3s animation)');
+                
+                // Log computed styles to verify
+                setTimeout(() => {
+                    const computed = window.getComputedStyle(titlebar);
+                    log(`[TITLEBAR] After animation - transform: ${computed.transform}`);
+                }, 350);
+            } else {
+                log('[TITLEBAR] Already hidden, no action taken');
+            }
+        }
+
+        // Toggle titlebar (called from IPC when right-click detected in main process)
+        function toggleTitlebar() {
+            toggleCount++;
+            log(`\n>>> TITLEBAR TOGGLE #${toggleCount} (from IPC) <<<`);
+            log(`[TITLEBAR] Current state: ${titlebarVisible ? 'visible' : 'hidden'}`);
+            
+            if (titlebarVisible) {
+                log('[TITLEBAR] Hiding titlebar');
+                hideTitlebar();
+            } else {
+                log('[TITLEBAR] Showing titlebar');
+                showTitlebar();
+            }
+        }
+
+        // Listen for titlebar toggle commands from main process
+        window.electronAPI.onTitlebarToggle(() => {
+            log('[IPC] Received titlebar-toggle command from main process');
+            toggleTitlebar();
+        });
+
+        // Left-click anywhere (except titlebar) hides titlebar
+        document.addEventListener('click', (e) => {
+            // Check if click was on titlebar or its children
+            const onTitlebar = titlebar.contains(e.target);
+            
+            if (!onTitlebar && titlebarVisible) {
+                log(`[TITLEBAR] Click outside titlebar detected - hiding`);
+                hideTitlebar();
+            }
+        });
+
+        // Log initial titlebar state
+        setTimeout(() => {
+            const computed = window.getComputedStyle(titlebar);
+            log(`[TITLEBAR] Initial state:`);
+            log(`[TITLEBAR]   - titlebarVisible: ${titlebarVisible}`);
+            log(`[TITLEBAR]   - classList: ${titlebar.classList.toString() || '(none)'}`);
+            log(`[TITLEBAR]   - transform: ${computed.transform}`);
+            log(`[TITLEBAR]   - z-index: ${computed.zIndex}`);
+        }, 100);
+
         // Window controls
         document.getElementById('minimize-btn').addEventListener('click', () => {
+            log('[WINDOW] Minimize button clicked');
             window.electronAPI.minimizeWindow();
         });
 
         document.getElementById('maximize-btn').addEventListener('click', () => {
+            log('[WINDOW] Maximize button clicked');
             window.electronAPI.toggleMaximize();
         });
 
         document.getElementById('close-btn').addEventListener('click', () => {
+            log('[WINDOW] Close button clicked');
             window.electronAPI.closeWindow();
         });
 
@@ -231,11 +325,13 @@
         }
 
         configBtn.addEventListener('click', () => {
+            log('[CONFIG] Config button clicked');
             urlConfig.classList.toggle('visible');
         });
 
         urlSubmit.addEventListener('click', () => {
             const url = urlInput.value.trim();
+            log(`[CONFIG] Submit clicked with URL: ${url}`);
             if (url) {
                 window.electronAPI.loadURL(url);
                 urlConfig.classList.remove('visible');
@@ -266,39 +362,14 @@
 
         // Hover message functionality with window bounds checking
         const hoverMessage = document.getElementById('hover-message');
-        const eventLog = document.getElementById('event-log');
-        const stateLog = document.getElementById('state-log');
-        const flagLog = document.getElementById('flag-log');
-        const eventTypeLog = document.getElementById('event-type-log');
-        const relatedTargetLog = document.getElementById('related-target-log');
-        const containsLog = document.getElementById('contains-log');
-        const mouseXLog = document.getElementById('mouse-x');
-        const mouseYLog = document.getElementById('mouse-y');
         let hoverTimeout = null;
         let hideTimeout = null;
         let isInWindow = false;
         let enterCount = 0;
         let leaveCount = 0;
 
-        function logEvent(event) {
-            eventLog.textContent = `Enter: ${enterCount}, Leave: ${leaveCount}, Last: ${event}`;
-        }
-
-        function logState(state) {
-            stateLog.textContent = state;
-        }
-
-        function logFlag() {
-            flagLog.textContent = isInWindow;
-        }
-
-        function logEventDetails(eventType, info) {
-            eventTypeLog.textContent = eventType;
-            relatedTargetLog.textContent = info || '-';
-        }
-
         function startAnimation() {
-            logState('Waiting 0.5s...');
+            log('🟢 ENTER - Starting hover animation (0.5s delay)');
             
             if (hoverTimeout) clearTimeout(hoverTimeout);
             if (hideTimeout) clearTimeout(hideTimeout);
@@ -306,28 +377,23 @@
             hoverMessage.classList.remove('show');
 
             hoverTimeout = setTimeout(() => {
-                logState('Showing message...');
+                log('  ↳ Showing hover message now');
                 hoverMessage.classList.add('show');
                 
                 hideTimeout = setTimeout(() => {
-                    logState('Hiding message...');
+                    log('  ↳ Hiding hover message (3s elapsed)');
                     hoverMessage.classList.remove('show');
-                    logState('Idle');
                 }, 3000);
             }, 500);
         }
 
         function stopAnimation() {
-            logState('Reset on leave');
+            log('🔴 LEAVE - Stopping hover animation');
             
             if (hoverTimeout) clearTimeout(hoverTimeout);
             if (hideTimeout) clearTimeout(hideTimeout);
             
             hoverMessage.classList.remove('show');
-            
-            setTimeout(() => {
-                logState('Idle');
-            }, 100);
         }
 
         // Check if mouse is within window bounds
@@ -336,55 +402,39 @@
                 const mousePos = await window.electronAPI.getMousePosition();
                 const windowBounds = await window.electronAPI.getWindowBounds();
                 
-                if (!windowBounds) {
-                    relatedTargetLog.textContent = 'No window bounds';
+                if (!mousePos || !windowBounds) {
                     return;
                 }
-                
-                mouseXLog.textContent = `${mousePos.x} (screen)`;
-                mouseYLog.textContent = `${mousePos.y} (screen)`;
                 
                 const inBounds = mousePos.x >= windowBounds.x && 
                                 mousePos.x <= windowBounds.x + windowBounds.width &&
                                 mousePos.y >= windowBounds.y && 
                                 mousePos.y <= windowBounds.y + windowBounds.height;
                 
-                const boundsInfo = `Win: [${windowBounds.x},${windowBounds.y}] ${windowBounds.width}x${windowBounds.height}`;
-                containsLog.textContent = `${inBounds ? 'IN' : 'OUT'} | ${boundsInfo}`;
-                
                 if (inBounds && !isInWindow) {
                     enterCount++;
-                    logEvent('BOUNDS-ENTER');
-                    logEventDetails('bounds check', `entered at ${mousePos.x},${mousePos.y}`);
+                    log(`>>> ENTER #${enterCount}: Mouse (${mousePos.x},${mousePos.y})`);
                     isInWindow = true;
-                    logFlag();
                     startAnimation();
                 } else if (!inBounds && isInWindow) {
                     leaveCount++;
-                    logEvent('BOUNDS-LEAVE');
-                    logEventDetails('bounds check', `left at ${mousePos.x},${mousePos.y}`);
+                    log(`<<< LEAVE #${leaveCount}: Mouse (${mousePos.x},${mousePos.y})`);
                     isInWindow = false;
-                    logFlag();
                     stopAnimation();
                 }
             } catch (err) {
                 console.error('Error checking mouse position:', err);
-                relatedTargetLog.textContent = 'Error: ' + err.message;
             }
         }
 
         // Poll mouse position every 50ms
+        log('Starting mouse position polling (every 50ms)...');
         setInterval(checkMouseInWindow, 50);
 
-        // Initialize debug display
-        logState('Idle');
-        logEvent('None');
-        logFlag();
-        eventTypeLog.textContent = 'Using WebContentsView';
-        relatedTargetLog.textContent = '-';
-        containsLog.textContent = '-';
-        mouseXLog.textContent = '-';
-        mouseYLog.textContent = '-';
+        log('=== Initialization Complete ===');
+        log('Right-click anywhere to toggle titlebar (captured in main process)');
+        log('Left-click outside titlebar to hide it');
+        log('Watch for [MAIN] and [TITLEBAR] logs to see toggle behavior\n');
     </script>
 </body>
 </html>

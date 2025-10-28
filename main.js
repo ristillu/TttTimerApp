@@ -4,6 +4,9 @@ const path = require('path');
 let mainWindow;
 let webContentsView;
 
+// Layout constants
+const TITLEBAR_HEIGHT = 32;
+const HOVER_STRIP_HEIGHT = 50;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -21,7 +24,7 @@ function createWindow() {
       nodeIntegrationInSubFrames: false
     },
     backgroundColor: '#00000000',
-    show: false // Don't show until ready
+    show: false
   });
 
   // Load debug version if DEBUG environment variable is set
@@ -44,13 +47,42 @@ function createWindow() {
   // Add the view to the window
   mainWindow.contentView.addChildView(webContentsView);
 
-  // Position the view below the titlebar (32px)
+  // Position the view between titlebar and hover strip
   const bounds = mainWindow.getBounds();
+  const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
   webContentsView.setBounds({
     x: 0,
-    y: 32,
+    y: TITLEBAR_HEIGHT,
     width: bounds.width,
-    height: bounds.height - 32
+    height: webviewHeight
+  });
+
+  console.log('WebContentsView positioned at:', {
+    x: 0,
+    y: TITLEBAR_HEIGHT,
+    width: bounds.width,
+    height: webviewHeight,
+    note: 'Between titlebar (32px) and hover strip (50px)'
+  });
+
+  // CRITICAL: Intercept context menu from WebContentsView
+  webContentsView.webContents.on('context-menu', (event, params) => {
+    console.log('[MAIN] Context menu event from WebContentsView at:', params.x, params.y);
+    event.preventDefault(); // Prevent default context menu
+    
+    // Send IPC to renderer to toggle titlebar
+    console.log('[MAIN] Sending titlebar-toggle command to renderer');
+    mainWindow.webContents.send('titlebar-toggle');
+  });
+
+  // Also intercept context menu from main window (for clicks on HTML areas)
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    console.log('[MAIN] Context menu event from main window at:', params.x, params.y);
+    event.preventDefault(); // Prevent default context menu
+    
+    // Send IPC to renderer to toggle titlebar
+    console.log('[MAIN] Sending titlebar-toggle command to renderer');
+    mainWindow.webContents.send('titlebar-toggle');
   });
 
   // Load the default URL
@@ -59,22 +91,30 @@ function createWindow() {
   // Update view size when window is resized
   mainWindow.on('resize', () => {
     const bounds = mainWindow.getBounds();
+    const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
     webContentsView.setBounds({
       x: 0,
-      y: 32,
+      y: TITLEBAR_HEIGHT,
       width: bounds.width,
-      height: bounds.height - 32
+      height: webviewHeight
     });
   });
 
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    console.log('Window shown, bounds:', mainWindow.getBounds());
   });
 
-  // Open DevTools in development (comment out for production)
-  // mainWindow.webContents.openDevTools();
-  // webContentsView.webContents.openDevTools();
+  // ENABLE DevTools to see renderer errors (comment out for production)
+  // mainWindow.webContents.openDevTools({ mode: 'detach' });
+
+  // Log any renderer errors to main process console
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 2) { // Only log warnings and errors
+      console.log(`[RENDERER CONSOLE] ${message}`);
+    }
+  });
 
   mainWindow.on('closed', function () {
     mainWindow = null;
@@ -84,25 +124,25 @@ function createWindow() {
   // Handle window maximize state
   mainWindow.on('maximize', () => {
     mainWindow.webContents.send('window-maximized');
-    // Update view bounds
     const bounds = mainWindow.getBounds();
+    const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
     webContentsView.setBounds({
       x: 0,
-      y: 32,
+      y: TITLEBAR_HEIGHT,
       width: bounds.width,
-      height: bounds.height - 32
+      height: webviewHeight
     });
   });
 
   mainWindow.on('unmaximize', () => {
     mainWindow.webContents.send('window-unmaximized');
-    // Update view bounds
     const bounds = mainWindow.getBounds();
+    const webviewHeight = bounds.height - TITLEBAR_HEIGHT - HOVER_STRIP_HEIGHT;
     webContentsView.setBounds({
       x: 0,
-      y: 32,
+      y: TITLEBAR_HEIGHT,
       width: bounds.width,
-      height: bounds.height - 32
+      height: webviewHeight
     });
   });
 }
@@ -130,21 +170,44 @@ ipcMain.on('window-close', () => {
   }
 });
 
+// IPC handler for renderer console logs (forward to terminal)
+ipcMain.on('renderer-log', (event, message) => {
+  console.log('[RENDERER]', message);
+});
+
 // IPC handlers for mouse position tracking
+let ipcCallCounter = 0;
 ipcMain.handle('get-mouse-position', () => {
-  const point = screen.getCursorScreenPoint();
-  return { x: point.x, y: point.y };
+  try {
+    const point = screen.getCursorScreenPoint();
+    ipcCallCounter++;
+    // Log every 20 calls to show activity without spam
+    if (ipcCallCounter % 20 === 0) {
+      console.log(`[IPC] Mouse polling active (${ipcCallCounter} calls)`);
+    }
+    return { x: point.x, y: point.y };
+  } catch (err) {
+    console.error('Error getting mouse position:', err);
+    return null;
+  }
 });
 
 ipcMain.handle('get-window-bounds', () => {
-  if (mainWindow) {
-    return mainWindow.getBounds();
+  try {
+    if (mainWindow) {
+      const bounds = mainWindow.getBounds();
+      return bounds;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error getting window bounds:', err);
+    return null;
   }
-  return null;
 });
 
 // IPC handler for loading URL in WebContentsView
 ipcMain.on('load-url', (event, url) => {
+  console.log('IPC: load-url received:', url);
   if (webContentsView && webContentsView.webContents) {
     webContentsView.webContents.loadURL(url);
   }
@@ -153,45 +216,38 @@ ipcMain.on('load-url', (event, url) => {
 // IPC handler to get current URL
 ipcMain.handle('get-current-url', () => {
   if (webContentsView && webContentsView.webContents) {
-    return webContentsView.webContents.getURL();
+    const url = webContentsView.webContents.getURL();
+    return url;
   }
   return 'https://sigrid.ttt-timer.com';
 });
 
-// This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
+  console.log('App ready, creating window...');
   createWindow();
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window when dock icon is clicked
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-// Quit when all windows are closed
 app.on('window-all-closed', function () {
-  // On macOS applications stay active until user quits with Cmd + Q
   if (process.platform !== 'darwin') app.quit();
 });
 
 // Security recommendations
 app.on('web-contents-created', (event, contents) => {
-  // Disable navigation to external sites
   contents.on('will-navigate', (event, navigationUrl) => {
     const parsedUrl = new URL(navigationUrl);
     
-    // Allow file protocol for app files
     if (parsedUrl.protocol === 'file:') {
       return;
     }
     
-    // Prevent navigation in main window (webview handles external URLs)
     event.preventDefault();
   });
 
-  // Prevent new window creation
   contents.setWindowOpenHandler(({ url }) => {
-    // Open links in default browser instead of new window
     require('electron').shell.openExternal(url);
     return { action: 'deny' };
   });

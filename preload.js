@@ -16,6 +16,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadURL: (url) => ipcRenderer.send('load-url', url),
   getCurrentURL: () => ipcRenderer.invoke('get-current-url'),
   
+  // Console logging to main process (for terminal visibility)
+  logToMain: (message) => ipcRenderer.send('renderer-log', message),
+  
+  // Titlebar toggle listener (receives commands from main process)
+  onTitlebarToggle: (callback) => {
+    // Remove any existing listeners first to avoid duplicates
+    ipcRenderer.removeAllListeners('titlebar-toggle');
+    // Add the new listener
+    ipcRenderer.on('titlebar-toggle', () => {
+      callback();
+    });
+  },
+  
   // Original IPC methods
   send: (channel, data) => {
     // Whitelist channels
