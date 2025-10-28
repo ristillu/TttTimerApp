@@ -11,6 +11,10 @@
             box-sizing: border-box;
         }
 
+        html {
+            background: transparent;
+        }
+
         body {
             background: transparent;
             overflow: hidden;
@@ -101,7 +105,7 @@
 
         #hover-strip {
             height: 50px;
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(30, 30, 30, 0.6);
             position: fixed;
             bottom: 0;
             left: 0;
@@ -110,18 +114,19 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            border-top: 1px solid rgba(224, 224, 224, 0.8);
+            border-top: 1px solid rgba(102, 211, 224, 0.15);
             backdrop-filter: blur(10px);
         }
 
         #hover-message {
-            background: rgba(0, 120, 212, 0.95);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            background: rgba(102, 211, 224, 0.9);
+            color: rgba(18, 18, 18, 0.95);
+            padding: 8px 16px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(102, 211, 224, 0.3);
             opacity: 0;
             transform: translateY(10px);
             transition: opacity 0.3s ease-out, transform 0.3s ease-out;
@@ -206,11 +211,11 @@
         }
 
         .resize-handle:hover {
-            background: rgba(0, 120, 212, 0.3);
+            background: rgba(102, 211, 224, 0.3);
         }
 
         .resize-handle.resizing {
-            background: rgba(0, 120, 212, 0.5);
+            background: rgba(102, 211, 224, 0.5);
         }
     </style>
 </head>
@@ -465,7 +470,7 @@
             }
         }, { passive: false });
 
-        log('[INIT] TTT Timer initialized with native Electron opacity control');
+        log('[INIT] TTT Timer initialized with MUI-themed transparent UI');
     </script>
 </body>
 </html>
