@@ -71,8 +71,8 @@ async function getOpacityFromReactApp(maxAttempts = 10, delayMs = 500) {
     }
   }
 
-  console.log('[TRANSPARENCY] ⛔ All attempts failed, using default: 0.15');
-  return 0.15; // Default fallback
+  console.log('[TRANSPARENCY] ⛔ All attempts failed, using default: 0.2');
+  return 0.2; // Default fallback
 }
 
 function createWindow() {
@@ -568,11 +568,12 @@ ipcMain.on('save-zoom', (event, zoomPercent) => {
   }
 });
 
-// Helper function to notify main window of transparency changes
-function notifyTransparencyChange(opacity) {
+// CRITICAL: Helper function to notify main window of transparency changes
+// Send as PERCENTAGE (5-100) not opacity (0-1)
+function notifyTransparencyChange(opacityPercent) {
   if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('transparency-changed', opacity);
-    console.log(`[TRANSPARENCY] 📤 Notified main window of opacity change: ${opacity}`);
+    mainWindow.webContents.send('transparency-changed', opacityPercent);
+    console.log(`[TRANSPARENCY] 📤 Notified main window of ${opacityPercent}% opacity`);
   }
 }
 
@@ -593,7 +594,7 @@ ipcMain.handle('get-current-transparency', async (event) => {
 ipcMain.on('set-transparency', (event, transparencyPercent) => {
   if (webContentsView && webContentsView.webContents) {
     const opacity = parseFloat(transparencyPercent) / 100; // Convert percentage to 0-1
-    console.log(`[TRANSPARENCY] 📝 Setting opacity to ${opacity} (${transparencyPercent}%)`);
+    console.log(`[TRANSPARENCY] 📝 Setting React app opacity to ${opacity} (${transparencyPercent}%)`);
     
     webContentsView.webContents.executeJavaScript(`
       (function() {
@@ -604,9 +605,9 @@ ipcMain.on('set-transparency', (event, transparencyPercent) => {
       })()
     `).then(success => {
       if (success) {
-        console.log(`[TRANSPARENCY] ✅ Successfully set opacity to ${opacity}`);
-        // Notify main window (index.html) to update hover strip
-        notifyTransparencyChange(opacity);
+        console.log(`[TRANSPARENCY] ✅ Successfully set React app opacity to ${opacity}`);
+        // CRITICAL: Notify main window with PERCENTAGE not opacity
+        notifyTransparencyChange(transparencyPercent);
       } else {
         console.error('[TRANSPARENCY] ❌ Failed to set opacity - API not available');
       }
@@ -631,8 +632,8 @@ ipcMain.on('save-transparency', (event, transparencyPercent) => {
     `).then(success => {
       if (success) {
         console.log(`[TRANSPARENCY] ✅ Successfully saved opacity to ${opacity}`);
-        // Notify main window (index.html) to update hover strip
-        notifyTransparencyChange(opacity);
+        // CRITICAL: Notify main window with PERCENTAGE not opacity
+        notifyTransparencyChange(transparencyPercent);
       }
     }).catch(err => {
       console.error('[TRANSPARENCY] ❌ Error saving opacity:', err);
