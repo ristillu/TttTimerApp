@@ -105,7 +105,9 @@
 
         #hover-strip {
             height: 50px;
-            background: rgba(30, 30, 30, 0.6);
+            /* HARDCODED: Use exact same color as React app (rgb 18,18,18) with 15% opacity */
+            /* This matches: hexToRgba('#121212', 0.15) from React app */
+            background: rgba(18, 18, 18, 0.15);
             position: fixed;
             bottom: 0;
             left: 0;
@@ -264,11 +266,9 @@
             if (!titlebarVisible) {
                 titlebarVisible = true;
                 
-                // CRITICAL: Notify main process IMMEDIATELY to move WebContentsView
                 window.electronAPI.notifyTitlebarVisibility(true);
                 log('[TITLEBAR] Notified main process - WebView should move down');
                 
-                // Small delay to ensure WebView moves before CSS animation starts
                 setTimeout(() => {
                     titlebar.classList.add('visible');
                     log('[TITLEBAR] CSS animation started - titlebar sliding down');
@@ -281,11 +281,9 @@
             if (titlebarVisible) {
                 titlebarVisible = false;
                 
-                // CRITICAL: Notify main process IMMEDIATELY to move WebContentsView back
                 window.electronAPI.notifyTitlebarVisibility(false);
                 log('[TITLEBAR] Notified main process - WebView should move up');
                 
-                // Start CSS animation
                 titlebar.classList.remove('visible');
                 log('[TITLEBAR] CSS animation started - titlebar sliding up');
             }
@@ -359,7 +357,7 @@
             window.electronAPI.loadURL(teamUrl);
         });
 
-        window.addEventListener('DOMContentLoaded', async () => {
+        window.addEventListener('DOMContentLoaded', () => {
             const savedTeam = localStorage.getItem('selected-team') || 'sigrid';
             updateTitle(savedTeam);
             const teamUrl = getTeamUrl(savedTeam);
@@ -470,7 +468,7 @@
             }
         }, { passive: false });
 
-        log('[INIT] TTT Timer initialized with MUI-themed transparent UI');
+        log('[INIT] TTT Timer initialized - hover strip hardcoded to rgba(18,18,18,0.15)');
     </script>
 </body>
 </html>

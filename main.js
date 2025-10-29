@@ -30,6 +30,51 @@ function updateWebViewBounds(isTitlebarVisible) {
   console.log(`[WEBVIEW] Bounds set - y: ${yOffset}, height: ${availableHeight}, titlebar: ${isTitlebarVisible}`);
 }
 
+// Helper function to get opacity from React app with retry logic
+async function getOpacityFromReactApp(maxAttempts = 10, delayMs = 500) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[TRANSPARENCY] Attempt ${attempt}/${maxAttempts} to get opacity from React app...`);
+      
+      if (!webContentsView || !webContentsView.webContents) {
+        console.log('[TRANSPARENCY] WebContentsView not ready yet');
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      const opacity = await webContentsView.webContents.executeJavaScript(`
+        (function() {
+          if (window.TTTTimerAPI && typeof window.TTTTimerAPI.getOpacity === 'function') {
+            const value = window.TTTTimerAPI.getOpacity();
+            console.log('[TTTTimerAPI] getOpacity() returned:', value);
+            return value;
+          } else {
+            console.log('[TTTTimerAPI] API not ready yet');
+            return null;
+          }
+        })()
+      `);
+
+      if (opacity !== null && opacity !== undefined && !isNaN(opacity)) {
+        console.log(`[TRANSPARENCY] ✅ Successfully got opacity: ${opacity}`);
+        return opacity;
+      } else {
+        console.log(`[TRANSPARENCY] ⚠️ Invalid opacity value: ${opacity}`);
+      }
+    } catch (err) {
+      console.error(`[TRANSPARENCY] ❌ Attempt ${attempt} error:`, err);
+    }
+
+    // Wait before next attempt (except on last attempt)
+    if (attempt < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  console.log('[TRANSPARENCY] ⛔ All attempts failed, using default: 0.15');
+  return 0.15; // Default fallback
+}
+
 function createWindow() {
   // Transparent frameless windows for overlay effect
   mainWindow = new BrowserWindow({
@@ -97,14 +142,14 @@ function createWindow() {
   webContentsView.webContents.loadURL('http://localhost:3000');
   //webContentsView.webContents.loadURL('https://sigrid.ttt-timer.com');
 
-  // COMPREHENSIVE CSS injection - backgrounds transparent, scrollbars hidden, foreground colors preserved
+  // MINIMAL CSS injection - only hide scrollbars and make base containers transparent
+  // DO NOT override the React app's rgba backgrounds!
   webContentsView.webContents.on('did-finish-load', () => {
-    console.log('[WEBVIEW] Page loaded, injecting CSS for transparency and hidden scrollbars');
+    console.log('[WEBVIEW] Page loaded, injecting minimal CSS');
     
     webContentsView.webContents.insertCSS(`
       /* ===== HIDE SCROLLBARS (but keep scrolling functional) ===== */
       
-      /* Webkit browsers (Chrome, Safari, Edge, Opera) */
       ::-webkit-scrollbar {
         width: 0px;
         height: 0px;
@@ -123,25 +168,21 @@ function createWindow() {
         background: transparent;
       }
       
-      /* Firefox */
       * {
         scrollbar-width: none;
       }
       
-      /* Internet Explorer and Edge legacy */
       * {
         -ms-overflow-style: none;
       }
       
-      /* Ensure scrolling still works */
       html, body {
         overflow-y: auto;
         overflow-x: hidden;
       }
       
-      /* ===== TRANSPARENT BACKGROUNDS (backgrounds only) ===== */
+      /* ===== TRANSPARENT BASE CONTAINERS ONLY ===== */
       
-      /* Root page containers only */
       html {
         background: transparent !important;
         background-color: transparent !important;
@@ -157,65 +198,17 @@ function createWindow() {
         background-color: transparent !important;
       }
       
-      #__next {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Only MUI Paper components that serve as page backgrounds (not buttons/cards) */
-      .MuiPaper-root:not(.MuiButton-root):not(.MuiCard-root) {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Specific dark background colors from MUI theme */
-      body[style*="background-color: rgb(18, 18, 18)"],
-      body[style*="background-color: #121212"],
-      #root[style*="background-color: rgb(18, 18, 18)"],
-      #root[style*="background-color: #121212"] {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Target only main container divs with dark backgrounds (not interactive elements) */
-      body > div[style*="background-color: rgb(18, 18, 18)"],
-      body > div[style*="background-color: #121212"],
-      #root > div[style*="background-color: rgb(18, 18, 18)"],
-      #root > div[style*="background-color: #121212"] {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* MUI AppBar if used as page background */
-      .MuiAppBar-root[style*="background-color: rgb(18, 18, 18)"],
-      .MuiAppBar-root[style*="background-color: #121212"] {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Remove pseudo-element backgrounds on root only */
-      body::before,
-      body::after,
       html::before,
       html::after,
+      body::before,
+      body::after,
       #root::before,
       #root::after {
         background: transparent !important;
         background-color: transparent !important;
       }
-      
-      /* DO NOT TARGET:
-       * - Buttons (keep their colors)
-       * - Text elements (keep their colors)
-       * - Cards (keep their backgrounds for contrast)
-       * - Interactive elements (keep their colors)
-       * - Any element with specific foreground styling
-       */
     `).then(() => {
-      console.log('[WEBVIEW] CSS injected successfully:');
-      console.log('  - Scrollbars hidden (scrolling still works via mousewheel)');
-      console.log('  - Backgrounds transparent');
-      console.log('  - Foreground colors preserved');
+      console.log('[WEBVIEW] Minimal CSS injected successfully');
     }).catch(err => {
       console.error('[WEBVIEW] Failed to inject CSS:', err);
     });
@@ -237,9 +230,6 @@ function createWindow() {
   webContentsView.webContents.on('did-navigate', () => {
     console.log('[WEBVIEW] Navigation detected, re-injecting CSS');
     webContentsView.webContents.insertCSS(`
-      /* ===== HIDE SCROLLBARS (but keep scrolling functional) ===== */
-      
-      /* Webkit browsers (Chrome, Safari, Edge, Opera) */
       ::-webkit-scrollbar {
         width: 0px;
         height: 0px;
@@ -258,25 +248,19 @@ function createWindow() {
         background: transparent;
       }
       
-      /* Firefox */
       * {
         scrollbar-width: none;
       }
       
-      /* Internet Explorer and Edge legacy */
       * {
         -ms-overflow-style: none;
       }
       
-      /* Ensure scrolling still works */
       html, body {
         overflow-y: auto;
         overflow-x: hidden;
       }
       
-      /* ===== TRANSPARENT BACKGROUNDS (backgrounds only) ===== */
-      
-      /* Root page containers only */
       html {
         background: transparent !important;
         background-color: transparent !important;
@@ -292,47 +276,10 @@ function createWindow() {
         background-color: transparent !important;
       }
       
-      #__next {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Only MUI Paper components that serve as page backgrounds (not buttons/cards) */
-      .MuiPaper-root:not(.MuiButton-root):not(.MuiCard-root) {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Specific dark background colors from MUI theme */
-      body[style*="background-color: rgb(18, 18, 18)"],
-      body[style*="background-color: #121212"],
-      #root[style*="background-color: rgb(18, 18, 18)"],
-      #root[style*="background-color: #121212"] {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Target only main container divs with dark backgrounds (not interactive elements) */
-      body > div[style*="background-color: rgb(18, 18, 18)"],
-      body > div[style*="background-color: #121212"],
-      #root > div[style*="background-color: rgb(18, 18, 18)"],
-      #root > div[style*="background-color: #121212"] {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* MUI AppBar if used as page background */
-      .MuiAppBar-root[style*="background-color: rgb(18, 18, 18)"],
-      .MuiAppBar-root[style*="background-color: #121212"] {
-        background: transparent !important;
-        background-color: transparent !important;
-      }
-      
-      /* Remove pseudo-element backgrounds on root only */
-      body::before,
-      body::after,
       html::before,
       html::after,
+      body::before,
+      body::after,
       #root::before,
       #root::after {
         background: transparent !important;
@@ -621,32 +568,32 @@ ipcMain.on('save-zoom', (event, zoomPercent) => {
   }
 });
 
-// NEW: Transparency management - communicate with WebContentsView's TTTTimerAPI
-ipcMain.handle('get-current-transparency', async (event) => {
-  if (webContentsView && webContentsView.webContents) {
-    try {
-      const opacity = await webContentsView.webContents.executeJavaScript(`
-        (function() {
-          if (window.TTTTimerAPI && window.TTTTimerAPI.getOpacity) {
-            return window.TTTTimerAPI.getOpacity();
-          }
-          return 0.15; // Default
-        })()
-      `);
-      console.log('[TRANSPARENCY] Current opacity from WebContentsView:', opacity);
-      return (opacity * 100).toString(); // Convert 0-1 to percentage string
-    } catch (err) {
-      console.error('[TRANSPARENCY] Failed to get opacity:', err);
-      return '15'; // Default 15%
-    }
+// Helper function to notify main window of transparency changes
+function notifyTransparencyChange(opacity) {
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('transparency-changed', opacity);
+    console.log(`[TRANSPARENCY] 📤 Notified main window of opacity change: ${opacity}`);
   }
-  return '15';
+}
+
+// Get initial transparency with retry logic
+ipcMain.handle('get-initial-transparency', async (event) => {
+  console.log('[TRANSPARENCY] 📞 Received request for initial transparency');
+  const opacity = await getOpacityFromReactApp();
+  console.log(`[TRANSPARENCY] 📤 Returning opacity: ${opacity}`);
+  return opacity;
+});
+
+// Transparency management - communicate with WebContentsView's TTTTimerAPI
+ipcMain.handle('get-current-transparency', async (event) => {
+  const opacity = await getOpacityFromReactApp();
+  return (opacity * 100).toString(); // Convert 0-1 to percentage string
 });
 
 ipcMain.on('set-transparency', (event, transparencyPercent) => {
   if (webContentsView && webContentsView.webContents) {
     const opacity = parseFloat(transparencyPercent) / 100; // Convert percentage to 0-1
-    console.log(`[TRANSPARENCY] Setting opacity to ${opacity} (${transparencyPercent}%)`);
+    console.log(`[TRANSPARENCY] 📝 Setting opacity to ${opacity} (${transparencyPercent}%)`);
     
     webContentsView.webContents.executeJavaScript(`
       (function() {
@@ -657,20 +604,20 @@ ipcMain.on('set-transparency', (event, transparencyPercent) => {
       })()
     `).then(success => {
       if (success) {
-        console.log(`[TRANSPARENCY] Successfully set opacity to ${opacity}`);
+        console.log(`[TRANSPARENCY] ✅ Successfully set opacity to ${opacity}`);
+        // Notify main window (index.html) to update hover strip
+        notifyTransparencyChange(opacity);
       } else {
-        console.error('[TRANSPARENCY] Failed to set opacity - API not available');
+        console.error('[TRANSPARENCY] ❌ Failed to set opacity - API not available');
       }
     }).catch(err => {
-      console.error('[TRANSPARENCY] Error setting opacity:', err);
+      console.error('[TRANSPARENCY] ❌ Error setting opacity:', err);
     });
   }
 });
 
 ipcMain.on('save-transparency', (event, transparencyPercent) => {
-  console.log('[SETTINGS] Transparency value saved:', transparencyPercent + '%');
-  // The React app's TransparencyContext handles localStorage persistence
-  // We just need to call setOpacity which will trigger the save
+  console.log('[SETTINGS] 💾 Transparency value saved:', transparencyPercent + '%');
   const opacity = parseFloat(transparencyPercent) / 100;
   
   if (webContentsView && webContentsView.webContents) {
@@ -683,10 +630,12 @@ ipcMain.on('save-transparency', (event, transparencyPercent) => {
       })()
     `).then(success => {
       if (success) {
-        console.log(`[TRANSPARENCY] Successfully saved opacity to ${opacity}`);
+        console.log(`[TRANSPARENCY] ✅ Successfully saved opacity to ${opacity}`);
+        // Notify main window (index.html) to update hover strip
+        notifyTransparencyChange(opacity);
       }
     }).catch(err => {
-      console.error('[TRANSPARENCY] Error saving opacity:', err);
+      console.error('[TRANSPARENCY] ❌ Error saving opacity:', err);
     });
   }
 });
