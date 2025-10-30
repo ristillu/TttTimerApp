@@ -73,8 +73,69 @@ async function getOpacityFromReactApp(maxAttempts = 10, delayMs = 500) {
     }
   }
 
-  console.log('[TRANSPARENCY] All attempts failed, using default: 0.2');
-  return 0.2; // Default fallback
+  console.log('[TRANSPARENCY] All attempts failed, using default: 1.0');
+  return 1.0; // Default fully opaque
+}
+
+// Helper function to attach DevTools keyboard shortcuts to webContents
+function attachDevToolsShortcuts(webContents, label) {
+  webContents.on('before-input-event', (event, input) => {
+    // F12 or Ctrl+Shift+I for main window DevTools
+    if (input.key === 'F12' || (input.control && input.shift && input.key === 'I')) {
+      console.log(`[DEVTOOLS] ${label} - Opening main window DevTools (F12/Ctrl+Shift+I)`);
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+      event.preventDefault();
+    }
+    // Ctrl+Shift+J for WebContentsView DevTools (React app)
+    if (input.control && input.shift && input.key === 'J') {
+      console.log(`[DEVTOOLS] ${label} - Opening React app DevTools (Ctrl+Shift+J)`);
+      if (webContentsView && webContentsView.webContents) {
+        webContentsView.webContents.openDevTools({ mode: 'detach' });
+      }
+      event.preventDefault();
+    }
+  });
+  console.log(`[DEVTOOLS] Keyboard shortcuts attached to ${label}`);
+}
+
+// CRITICAL: Helper function to notify main window of transparency changes
+// Send as PERCENTAGE (25-100) to update Electron UI elements
+function notifyTransparencyChange(opacityPercent) {
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('transparency-changed', opacityPercent);
+    console.log(`[TRANSPARENCY] Notified Electron UI of ${opacityPercent}% opacity`);
+  }
+}
+
+// Apply transparency to ALL elements: React app + Electron UI
+async function applyTransparencyToAll(transparencyPercent) {
+  console.log(`[TRANSPARENCY] Applying ${transparencyPercent}% to all elements`);
+  const opacity = parseFloat(transparencyPercent) / 100;
+  
+  // 1. Apply to React app
+  if (webContentsView && webContentsView.webContents) {
+    try {
+      const success = await webContentsView.webContents.executeJavaScript(`
+        (function() {
+          if (window.TTTTimerAPI && window.TTTTimerAPI.setOpacity) {
+            return window.TTTTimerAPI.setOpacity(${opacity});
+          }
+          return false;
+        })()
+      `);
+      
+      if (success) {
+        console.log(`[TRANSPARENCY] React app opacity set to ${opacity}`);
+      } else {
+        console.log(`[TRANSPARENCY] React app API not ready yet`);
+      }
+    } catch (err) {
+      console.error('[TRANSPARENCY] Error setting React app opacity:', err);
+    }
+  }
+  
+  // 2. Apply to Electron UI (titlebar, hover strip, vertical strips)
+  notifyTransparencyChange(transparencyPercent);
 }
 
 function createWindow() {
@@ -225,6 +286,9 @@ function createWindow() {
       console.error('[WEBVIEW] Failed to inject CSS:', err);
     });
 
+    // Attach DevTools shortcuts to WebContentsView (React app)
+    attachDevToolsShortcuts(webContentsView.webContents, 'WebContentsView (React app)');
+
     // Apply saved settings
     if (mainWindow && mainWindow.webContents) {
       // Apply zoom
@@ -236,65 +300,33 @@ function createWindow() {
         console.log(`[ZOOM] Applied: ${zoomPercent}%`);
       });
       
-      // Apply transparency
+      // Apply transparency to ALL elements
       mainWindow.webContents.executeJavaScript(`
         localStorage.getItem('transparency-level') || '100'
       `).then((transparencyPercent) => {
         console.log(`[TRANSPARENCY] Applying saved transparency: ${transparencyPercent}%`);
-        const opacity = parseFloat(transparencyPercent) / 100;
         
         // Wait a bit for React app to initialize
         setTimeout(() => {
-          if (webContentsView && webContentsView.webContents) {
-            webContentsView.webContents.executeJavaScript(`
-              (function() {
-                console.log('[INIT] Attempting to apply saved transparency: ${opacity}');
-                if (window.TTTTimerAPI && window.TTTTimerAPI.setOpacity) {
-                  const result = window.TTTTimerAPI.setOpacity(${opacity});
-                  console.log('[INIT] Applied transparency:', result);
-                  return result;
-                } else {
-                  console.log('[INIT] TTTTimerAPI not ready yet, will retry');
-                  return false;
-                }
-              })()
-            `).then(success => {
-              if (success) {
-                console.log('[TRANSPARENCY] Successfully applied saved transparency on load');
-                notifyTransparencyChange(transparencyPercent);
-              } else {
-                // Retry if API not ready
-                console.log('[TRANSPARENCY] Retrying transparency application...');
-                setTimeout(() => {
-                  if (webContentsView && webContentsView.webContents) {
-                    webContentsView.webContents.executeJavaScript(`
-                      (function() {
-                        if (window.TTTTimerAPI && window.TTTTimerAPI.setOpacity) {
-                          return window.TTTTimerAPI.setOpacity(${opacity});
-                        }
-                        return false;
-                      })()
-                    `).then(retrySuccess => {
-                      if (retrySuccess) {
-                        console.log('[TRANSPARENCY] Successfully applied transparency on retry');
-                        notifyTransparencyChange(transparencyPercent);
-                      }
-                    });
-                  }
-                }, 1000);
-              }
-            }).catch(err => {
-              console.error('[TRANSPARENCY] Error applying saved transparency:', err);
-            });
-          }
+          applyTransparencyToAll(transparencyPercent).then(() => {
+            console.log('[TRANSPARENCY] Successfully applied saved transparency on load');
+          }).catch(err => {
+            console.error('[TRANSPARENCY] Error applying saved transparency:', err);
+            // Retry once
+            setTimeout(() => {
+              applyTransparencyToAll(transparencyPercent).then(() => {
+                console.log('[TRANSPARENCY] Successfully applied transparency on retry');
+              });
+            }, 1000);
+          });
         }, 500); // Wait 500ms for React app to initialize
       });
     }
   });
 
-  // Re-inject CSS on navigation
+  // Re-inject CSS and re-attach shortcuts on navigation
   webContentsView.webContents.on('did-navigate', () => {
-    console.log('[WEBVIEW] Navigation detected, re-injecting CSS');
+    console.log('[WEBVIEW] Navigation detected, re-injecting CSS and re-attaching shortcuts');
     webContentsView.webContents.insertCSS(`
       ::-webkit-scrollbar {
         width: 0px;
@@ -354,6 +386,9 @@ function createWindow() {
     `).catch(err => {
       console.error('[WEBVIEW] Failed to re-inject CSS on navigation:', err);
     });
+
+    // Re-attach DevTools shortcuts after navigation
+    attachDevToolsShortcuts(webContentsView.webContents, 'WebContentsView (React app) - after navigation');
   });
 
   // Show window when ready
@@ -407,21 +442,8 @@ function createWindow() {
     }, 100);
   });
 
-  // DevTools keyboard shortcuts
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    // F12 or Ctrl+Shift+I for main window DevTools
-    if (input.key === 'F12' || (input.control && input.shift && input.key === 'I')) {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
-      event.preventDefault();
-    }
-    // Ctrl+Shift+J for WebContentsView DevTools (React app)
-    if (input.control && input.shift && input.key === 'J') {
-      if (webContentsView && webContentsView.webContents) {
-        webContentsView.webContents.openDevTools({ mode: 'detach' });
-      }
-      event.preventDefault();
-    }
-  });
+  // Attach DevTools shortcuts to main window
+  attachDevToolsShortcuts(mainWindow.webContents, 'Main window');
 
   mainWindow.on('closed', function () {
     mainWindow = null;
@@ -709,54 +731,19 @@ ipcMain.on('save-team', (event, team) => {
         const applyTransparency = () => {
           console.log('[SETTINGS] New team page loaded, applying transparency');
           
-          // Wait a bit for React app to initialize
+          // Wait a bit for React app to initialize, then apply to all elements
           setTimeout(() => {
-            if (webContentsView && webContentsView.webContents) {
-              const opacity = parseFloat(savedTransparency) / 100;
-              webContentsView.webContents.executeJavaScript(`
-                (function() {
-                  console.log('[TEAM-SWITCH] Attempting to apply saved transparency: ${opacity}');
-                  if (window.TTTTimerAPI && window.TTTTimerAPI.setOpacity) {
-                    const result = window.TTTTimerAPI.setOpacity(${opacity});
-                    console.log('[TEAM-SWITCH] Applied transparency:', result);
-                    return result;
-                  } else {
-                    console.log('[TEAM-SWITCH] TTTTimerAPI not ready yet, retrying...');
-                    return false;
-                  }
-                })()
-              `).then(success => {
-                if (success) {
-                  console.log('[SETTINGS] Successfully applied transparency to new team');
-                  // Notify main window strips
-                  notifyTransparencyChange(savedTransparency);
-                } else {
-                  // Retry if API not ready
-                  console.log('[SETTINGS] Retrying transparency application...');
-                  setTimeout(() => {
-                    if (webContentsView && webContentsView.webContents) {
-                      webContentsView.webContents.executeJavaScript(`
-                        (function() {
-                          if (window.TTTTimerAPI && window.TTTTimerAPI.setOpacity) {
-                            return window.TTTTimerAPI.setOpacity(${opacity});
-                          }
-                          return false;
-                        })()
-                      `).then(retrySuccess => {
-                        if (retrySuccess) {
-                          console.log('[SETTINGS] Successfully applied transparency on retry');
-                          notifyTransparencyChange(savedTransparency);
-                        } else {
-                          console.error('[SETTINGS] Failed to apply transparency after retry');
-                        }
-                      });
-                    }
-                  }, 1000);
-                }
-              }).catch(err => {
-                console.error('[SETTINGS] Error applying transparency:', err);
-              });
-            }
+            applyTransparencyToAll(savedTransparency).then(() => {
+              console.log('[SETTINGS] Successfully applied transparency to new team');
+            }).catch(err => {
+              console.error('[SETTINGS] Error applying transparency:', err);
+              // Retry once
+              setTimeout(() => {
+                applyTransparencyToAll(savedTransparency).then(() => {
+                  console.log('[SETTINGS] Successfully applied transparency on retry');
+                });
+              }, 1000);
+            });
           }, 500); // Wait 500ms for React app to initialize
         };
         
@@ -799,15 +786,6 @@ ipcMain.on('save-zoom', (event, zoomPercent) => {
   }
 });
 
-// CRITICAL: Helper function to notify main window of transparency changes
-// Send as PERCENTAGE (5-100) not opacity (0-1)
-function notifyTransparencyChange(opacityPercent) {
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('transparency-changed', opacityPercent);
-    console.log(`[TRANSPARENCY] Notified main window of ${opacityPercent}% opacity`);
-  }
-}
-
 // Get initial transparency with retry logic
 ipcMain.handle('get-initial-transparency', async (event) => {
   console.log('[TRANSPARENCY] Received request for initial transparency');
@@ -849,9 +827,9 @@ ipcMain.handle('check-api-available', async (event) => {
   }
 });
 
-// Transparency management - communicate with WebContentsView's TTTTimerAPI
+// Transparency management - unified control for ALL elements
 ipcMain.handle('get-current-transparency', async (event) => {
-  // First try to get from Electron's localStorage (master source of truth)
+  // Get from Electron's localStorage (master source of truth)
   if (mainWindow && mainWindow.webContents) {
     try {
       const savedTransparency = await mainWindow.webContents.executeJavaScript(`
@@ -866,49 +844,32 @@ ipcMain.handle('get-current-transparency', async (event) => {
     }
   }
   
-  // Fallback: try to get from React app
-  const opacity = await getOpacityFromReactApp();
-  return (opacity * 100).toString(); // Convert 0-1 to percentage string
+  // Fallback: default to 100% (fully opaque)
+  return '100';
 });
 
 ipcMain.on('set-transparency', (event, transparencyPercent) => {
-  if (webContentsView && webContentsView.webContents) {
-    const opacity = parseFloat(transparencyPercent) / 100; // Convert percentage to 0-1
-    console.log(`[TRANSPARENCY] Setting React app opacity to ${opacity} (${transparencyPercent}%)`);
-    
-    // Save to Electron app's localStorage for persistence
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.executeJavaScript(`
-        localStorage.setItem('transparency-level', '${transparencyPercent}');
-      `).catch(err => {
-        console.error('[TRANSPARENCY] Error saving to Electron localStorage:', err);
-      });
-    }
-    
-    webContentsView.webContents.executeJavaScript(`
-      (function() {
-        if (window.TTTTimerAPI && window.TTTTimerAPI.setOpacity) {
-          return window.TTTTimerAPI.setOpacity(${opacity});
-        }
-        return false;
-      })()
-    `).then(success => {
-      if (success) {
-        console.log(`[TRANSPARENCY] Successfully set React app opacity to ${opacity}`);
-        // CRITICAL: Notify main window with PERCENTAGE not opacity
-        notifyTransparencyChange(transparencyPercent);
-      } else {
-        console.error('[TRANSPARENCY] Failed to set opacity - API not available');
-      }
-    }).catch(err => {
-      console.error('[TRANSPARENCY] Error setting opacity:', err);
+  console.log(`[TRANSPARENCY] Setting all elements to ${transparencyPercent}%`);
+  
+  // Save to Electron app's localStorage for persistence
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.executeJavaScript(`
+      localStorage.setItem('transparency-level', '${transparencyPercent}');
+    `).catch(err => {
+      console.error('[TRANSPARENCY] Error saving to Electron localStorage:', err);
     });
   }
+  
+  // Apply to all elements (React app + Electron UI)
+  applyTransparencyToAll(transparencyPercent).then(() => {
+    console.log(`[TRANSPARENCY] Successfully applied ${transparencyPercent}% to all elements`);
+  }).catch(err => {
+    console.error('[TRANSPARENCY] Error applying transparency:', err);
+  });
 });
 
 ipcMain.on('save-transparency', (event, transparencyPercent) => {
-  console.log('[SETTINGS] Transparency value saved:', transparencyPercent + '%');
-  const opacity = parseFloat(transparencyPercent) / 100;
+  console.log('[SETTINGS] Saving transparency:', transparencyPercent + '%');
   
   // Save to Electron app's localStorage
   if (mainWindow && mainWindow.webContents) {
@@ -920,25 +881,12 @@ ipcMain.on('save-transparency', (event, transparencyPercent) => {
     });
   }
   
-  // Apply to React app
-  if (webContentsView && webContentsView.webContents) {
-    webContentsView.webContents.executeJavaScript(`
-      (function() {
-        if (window.TTTTimerAPI && window.TTTTimerAPI.setOpacity) {
-          return window.TTTTimerAPI.setOpacity(${opacity});
-        }
-        return false;
-      })()
-    `).then(success => {
-      if (success) {
-        console.log(`[TRANSPARENCY] Successfully saved opacity to ${opacity}`);
-        // CRITICAL: Notify main window with PERCENTAGE not opacity
-        notifyTransparencyChange(transparencyPercent);
-      }
-    }).catch(err => {
-      console.error('[TRANSPARENCY] Error saving opacity:', err);
-    });
-  }
+  // Apply to all elements (React app + Electron UI)
+  applyTransparencyToAll(transparencyPercent).then(() => {
+    console.log(`[TRANSPARENCY] Successfully saved and applied ${transparencyPercent}% to all elements`);
+  }).catch(err => {
+    console.error('[TRANSPARENCY] Error applying transparency:', err);
+  });
 });
 
 app.whenReady().then(() => {

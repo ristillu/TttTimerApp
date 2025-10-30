@@ -38,7 +38,7 @@
             right: 0;
             z-index: 5000;
             transform: translateY(-32px);
-            transition: transform 0.3s ease-out;
+            transition: transform 0.3s ease-out, background-color 0.3s ease-in-out;
         }
 
         #titlebar.visible {
@@ -118,8 +118,7 @@
 
         #hover-strip {
             height: 50px;
-            /* DYNAMIC: Maximum alpha 0.2 to match React app background */
-            background: rgba(18, 18, 18, 0.2);
+            background: rgba(18, 18, 18, 1.0);
             position: fixed;
             bottom: 0;
             left: 16px;
@@ -128,11 +127,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* No visible border to seamlessly blend with React app */
             backdrop-filter: blur(10px);
-            /* Allow mouse events to pass through */
             pointer-events: none;
-            /* Smooth transition when opacity changes */
             transition: background-color 0.3s ease-in-out;
         }
 
@@ -148,7 +144,6 @@
             opacity: 0;
             transform: translateY(10px);
             transition: opacity 0.3s ease-out, transform 0.3s ease-out;
-            /* Re-enable pointer events for the message itself */
             pointer-events: auto;
         }
 
@@ -157,19 +152,16 @@
             transform: translateY(0);
         }
 
-        /* VERTICAL SIDE STRIPS - Same styling as hover strip */
+        /* VERTICAL SIDE STRIPS */
         .vertical-strip {
             width: 16px;
-            /* DYNAMIC: Maximum alpha 0.2 to match React app background */
-            background: rgba(18, 18, 18, 0.2);
+            background: rgba(18, 18, 18, 1.0);
             position: fixed;
             top: 0;
             bottom: 0;
             z-index: 2000;
             backdrop-filter: blur(10px);
-            /* Enable pointer events for resizing */
             pointer-events: auto;
-            /* Smooth transition when opacity changes */
             transition: background-color 0.3s ease-in-out;
             cursor: ew-resize;
         }
@@ -186,7 +178,7 @@
             background: rgba(102, 211, 224, 0.3);
         }
 
-        /* Custom resize handles - IMPROVED */
+        /* Custom resize handles */
         .resize-handle {
             position: fixed;
             z-index: 6000;
@@ -195,7 +187,6 @@
             transition: background 0.2s;
         }
 
-        /* Top edge - small to avoid titlebar */
         .resize-n {
             top: 0;
             left: 20px;
@@ -204,7 +195,6 @@
             cursor: ns-resize;
         }
 
-        /* Bottom edge - small to avoid hover strip */
         .resize-s {
             bottom: 0;
             left: 20px;
@@ -213,7 +203,6 @@
             cursor: ns-resize;
         }
 
-        /* IMPROVED: Side edges - WIDER and FULL HEIGHT for easy grabbing */
         .resize-e {
             top: 0;
             bottom: 0;
@@ -230,7 +219,6 @@
             cursor: ew-resize;
         }
 
-        /* Corner handles - slightly larger */
         .resize-ne {
             top: 0;
             right: 0;
@@ -300,7 +288,7 @@
         <div id="hover-message">RIGHT CLICK FOR CONTROLS</div>
     </div>
 
-    <!-- Custom resize handles - IMPROVED ACCESSIBILITY -->
+    <!-- Custom resize handles -->
     <div class="resize-handle resize-n" data-direction="n"></div>
     <div class="resize-handle resize-s" data-direction="s"></div>
     <div class="resize-handle resize-e" data-direction="e"></div>
@@ -322,34 +310,33 @@
         const rightStrip = document.getElementById('right-strip');
         let titlebarVisible = false;
 
-        // CRITICAL: Maximum alpha for hover strip and vertical strips matches React app background (0.2)
-        const MAX_BACKGROUND_ALPHA = 0.2;
-
-        // Update hover strip and vertical strips background to match React app
-        // React app background is capped at alpha 0.2
-        // Slider percentage scales this: 100% = 0.2, 25% = 0.05, etc.
-        function updateStripOpacity(opacityPercent) {
-            // Convert percentage (25-100) to alpha (0.05-0.2)
-            const scaledAlpha = (opacityPercent / 100) * MAX_BACKGROUND_ALPHA;
+        // Update all Electron UI elements opacity (titlebar, hover strip, vertical strips)
+        // Input is percentage (25-100), output is opacity (0.25-1.0)
+        function updateElectronUIOpacity(opacityPercent) {
+            const opacity = parseFloat(opacityPercent) / 100;
             
             const r = 18;
             const g = 18;
             const b = 18;
-            const rgbaColor = `rgba(${r}, ${g}, ${b}, ${scaledAlpha})`;
+            const rgbaColor = `rgba(${r}, ${g}, ${b}, ${opacity})`;
             
-            // Update all strips
+            // Update titlebar background
+            const titlebarRgba = `rgba(30, 30, 30, ${opacity})`;
+            titlebar.style.backgroundColor = titlebarRgba;
+            
+            // Update hover strip and vertical strips
             hoverStrip.style.backgroundColor = rgbaColor;
             leftStrip.style.backgroundColor = rgbaColor;
             rightStrip.style.backgroundColor = rgbaColor;
             
-            log(`[STRIPS] Opacity ${opacityPercent}% -> alpha ${scaledAlpha.toFixed(4)} -> ${rgbaColor}`);
+            log(`[UI-OPACITY] Set to ${opacityPercent}% (${opacity}) -> titlebar: ${titlebarRgba}, strips: ${rgbaColor}`);
         }
 
         // Listen for transparency changes from main process
         // Value comes as percentage (25-100)
         window.electronAPI.onTransparencyChanged((opacityPercent) => {
-            log(`[STRIPS] Received transparency: ${opacityPercent}%`);
-            updateStripOpacity(opacityPercent);
+            log(`[UI-OPACITY] Received transparency: ${opacityPercent}%`);
+            updateElectronUIOpacity(opacityPercent);
         });
 
         // Show titlebar - NOTIFY MAIN PROCESS FIRST, THEN ANIMATE
@@ -456,13 +443,11 @@
                     log(`[SETTINGS] Loading: ${newTeamUrl}`);
                     window.electronAPI.loadURL(newTeamUrl);
                 } catch (err) {
-                    // Fallback to root if URL parsing fails
                     log(`[SETTINGS] Could not parse URL, loading root: ${err}`);
                     const teamUrl = getTeamUrl(team);
                     window.electronAPI.loadURL(teamUrl);
                 }
             }).catch(err => {
-                // Fallback to root if getCurrentURL fails
                 log(`[SETTINGS] Could not get current URL, loading root: ${err}`);
                 const teamUrl = getTeamUrl(team);
                 window.electronAPI.loadURL(teamUrl);
@@ -594,7 +579,7 @@
                     handle.classList.remove('resizing');
                 });
                 
-                // Reset vertical strip colors
+                // Reset vertical strip colors to current opacity
                 const currentOpacity = parseFloat(hoverStrip.style.backgroundColor.match(/[\d.]+\)$/)[0].slice(0, -1));
                 const rgbaColor = `rgba(18, 18, 18, ${currentOpacity})`;
                 leftStrip.style.backgroundColor = rgbaColor;
@@ -620,7 +605,7 @@
             }, 100);
         });
 
-        log('[INIT] TTT Timer initialized with vertical side strips - max alpha: ' + MAX_BACKGROUND_ALPHA);
+        log('[INIT] TTT Timer initialized - default opacity: 1.0 (fully opaque)');
     </script>
 </body>
 </html>
