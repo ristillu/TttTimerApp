@@ -2,8 +2,11 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com">
     <title>TTT Timer - Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -12,20 +15,22 @@
         }
 
         body {
-            background: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #121212;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Oxygen, Ubuntu, Cantarell, sans-serif;
             overflow: hidden;
+            color: #ffffff;
         }
 
         #settings-titlebar {
             height: 40px;
-            background: rgba(30, 30, 30, 0.95);
+            background: #1e1e1e;
             -webkit-app-region: drag;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 15px;
             color: white;
+            border-bottom: 1px solid rgba(102, 211, 224, 0.2);
         }
 
         #settings-title-left {
@@ -34,6 +39,11 @@
             gap: 10px;
             font-size: 14px;
             font-weight: 500;
+        }
+
+        #settings-icon {
+            font-size: 18px;
+            color: #66d3e0;
         }
 
         #settings-close-btn {
@@ -45,116 +55,151 @@
             color: white;
             cursor: pointer;
             font-size: 16px;
-            border-radius: 4px;
+            border-radius: 8px;
             transition: background 0.2s;
         }
 
         #settings-close-btn:hover {
-            background: #e81123;
+            background: rgba(255, 255, 255, 0.1);
         }
 
         #settings-content {
-            padding: 30px;
+            padding: 24px;
             overflow-y: auto;
             max-height: calc(100vh - 40px);
         }
 
         .settings-field {
-            margin-bottom: 25px;
+            margin-bottom: 24px;
         }
 
         .settings-label {
             display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
+            margin-bottom: 10px;
+            font-size: 13px;
             font-weight: 500;
-            color: #333;
+            color: rgba(255, 255, 255, 0.9);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
 
         #team-select {
             width: 100%;
-            padding: 10px 12px;
+            padding: 12px 14px;
             font-size: 14px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            background: white;
+            font-family: 'Roboto', sans-serif;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            background: #1e1e1e;
+            color: #ffffff;
             cursor: pointer;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, background 0.2s;
+            outline: none;
         }
 
         #team-select:hover {
-            border-color: #0078d4;
+            background: rgba(102, 211, 224, 0.05);
+            border-color: rgba(102, 211, 224, 0.3);
         }
 
         #team-select:focus {
-            outline: none;
-            border-color: #0078d4;
+            border-color: #66d3e0;
+            background: rgba(102, 211, 224, 0.05);
+        }
+
+        #team-select option {
+            background: #1e1e1e;
+            color: #ffffff;
         }
 
         #zoom-select {
             width: 100%;
-            padding: 10px 12px;
+            padding: 12px 14px;
             font-size: 14px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            background: white;
+            font-family: 'Roboto', sans-serif;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            background: #1e1e1e;
+            color: #ffffff;
             cursor: pointer;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, background 0.2s;
+            outline: none;
         }
 
         #zoom-select:hover {
-            border-color: #0078d4;
+            background: rgba(102, 211, 224, 0.05);
+            border-color: rgba(102, 211, 224, 0.3);
         }
 
         #zoom-select:focus {
-            outline: none;
-            border-color: #0078d4;
+            border-color: #66d3e0;
+            background: rgba(102, 211, 224, 0.05);
+        }
+
+        #zoom-select option {
+            background: #1e1e1e;
+            color: #ffffff;
         }
 
         #settings-save-btn {
             width: 100%;
-            padding: 12px;
-            background: #0078d4;
-            color: white;
+            padding: 14px;
+            background: #66d3e0;
+            color: #121212;
             border: none;
-            border-radius: 4px;
+            border-radius: 16px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
+            font-family: 'Roboto', sans-serif;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.1s;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 8px rgba(102, 211, 224, 0.3);
         }
 
         #settings-save-btn:hover {
-            background: #106ebe;
+            background: #5bc4d1;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 211, 224, 0.4);
         }
 
-        /* Transparency slider styles */
+        #settings-save-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Transparency slider styles with MUI theme */
         .slider-container {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
         }
 
         .slider-value-display {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 13px;
-            color: #666;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
         }
 
         .slider-value {
             font-weight: 600;
-            color: #0078d4;
+            font-size: 14px;
+            color: #66d3e0;
+            padding: 2px 8px;
+            background: rgba(102, 211, 224, 0.1);
+            border-radius: 8px;
         }
 
         #transparency-slider {
             width: 100%;
             height: 6px;
             border-radius: 3px;
-            background: #ddd;
+            background: rgba(255, 255, 255, 0.12);
             outline: none;
             -webkit-appearance: none;
+            cursor: pointer;
         }
 
         #transparency-slider::-webkit-slider-thumb {
@@ -163,35 +208,66 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: #0078d4;
+            background: #66d3e0;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.2s;
+            box-shadow: 0 2px 6px rgba(102, 211, 224, 0.4);
         }
 
         #transparency-slider::-webkit-slider-thumb:hover {
-            background: #106ebe;
+            background: #5bc4d1;
+            transform: scale(1.1);
+        }
+
+        #transparency-slider::-webkit-slider-thumb:active {
+            transform: scale(0.95);
         }
 
         #transparency-slider::-moz-range-thumb {
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: #0078d4;
+            background: #66d3e0;
             cursor: pointer;
             border: none;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.2s;
+            box-shadow: 0 2px 6px rgba(102, 211, 224, 0.4);
         }
 
         #transparency-slider::-moz-range-thumb:hover {
-            background: #106ebe;
+            background: #5bc4d1;
+            transform: scale(1.1);
+        }
+
+        #transparency-slider::-moz-range-thumb:active {
+            transform: scale(0.95);
+        }
+
+        /* Scrollbar styling */
+        #settings-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #settings-content::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        #settings-content::-webkit-scrollbar-thumb {
+            background: rgba(102, 211, 224, 0.3);
+            border-radius: 4px;
+        }
+
+        #settings-content::-webkit-scrollbar-thumb:hover {
+            background: rgba(102, 211, 224, 0.5);
         }
     </style>
 </head>
 <body>
     <div id="settings-titlebar">
         <div id="settings-title-left">
-            <span>&#9881;</span>
-            <span>TTT Timer - Settings</span>
+            <span id="settings-icon">&#9881;</span>
+            <span>Settings</span>
         </div>
         <button id="settings-close-btn" title="Close">X</button>
     </div>
@@ -233,11 +309,11 @@
             <label class="settings-label" for="transparency-slider">Background Opacity</label>
             <div class="slider-container">
                 <div class="slider-value-display">
-                    <span>More Transparent (5%)</span>
+                    <span>More Transparent (25%)</span>
                     <span class="slider-value" id="transparency-value">100%</span>
                     <span>Opaque (100%)</span>
                 </div>
-                <input type="range" id="transparency-slider" min="5" max="100" value="100" step="1">
+                <input type="range" id="transparency-slider" min="25" max="100" value="100" step="1">
             </div>
         </div>
         <button id="settings-save-btn">Save Settings</button>
@@ -269,12 +345,13 @@
                 zoomSelect.value = currentZoom;
             }
 
-            // Load transparency
+            // Load transparency - clamp to minimum 25%
             const currentTransparency = await window.electronAPI.getCurrentTransparency();
             console.log('Current transparency:', currentTransparency + '%');
             if (currentTransparency) {
-                transparencySlider.value = currentTransparency;
-                transparencyValue.textContent = currentTransparency + '%';
+                const clampedTransparency = Math.max(25, parseFloat(currentTransparency));
+                transparencySlider.value = clampedTransparency;
+                transparencyValue.textContent = clampedTransparency + '%';
             }
         });
 

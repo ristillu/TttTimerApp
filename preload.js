@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Mousewheel scrolling
   scrollWindow: (deltaY) => ipcRenderer.send('window-scroll', deltaY),
   
+  // Force window repaint
+  forceRepaint: () => ipcRenderer.send('force-repaint'),
+  
+  // Debug helper to check if TTTTimerAPI is available
+  checkAPI: () => ipcRenderer.invoke('check-api-available'),
+  
   // Logging
   logToMain: (message) => ipcRenderer.send('renderer-log', message),
   
